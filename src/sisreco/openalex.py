@@ -189,6 +189,8 @@ def download_catalog(output_path: Path = RAW_CATALOG) -> int:
                     "doi": work.get("doi"),
                     "url": location.get("landing_page_url") or work.get("doi"),
                     "source": source.get("display_name"),
+                    "source_database": "OpenAlex",
+                    "source_collection": None,
                 }
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
                 written += 1

@@ -8,6 +8,7 @@ from sisreco.catalog import clean_catalog
 from sisreco.engine import recommend
 from sisreco.evaluation import ndcg_at_k, precision_at_k
 from sisreco.openalex import reconstruct_abstract, valid_work
+from sisreco.scielo import journal_subjects, normalize_article, sample_offsets
 
 
 def test_reconstruct_abstract_respects_positions():
@@ -96,3 +97,82 @@ def test_metrics_validate_k():
         precision_at_k([1], 0)
     with pytest.raises(ValueError):
         ndcg_at_k([1], 0)
+
+
+def make_scielo_record():
+    abstract = " ".join([
+        "Este estudio analiza métodos de investigación aplicada, describe sus resultados y discute sus implicaciones para futuras investigaciones."
+    ] * 9)
+    return {
+        "code": "S1234-56782024000100001",
+        "collection": "col",
+        "doi": "https://doi.org/10.1234/example.2024.01",
+        "fulltexts": {"html": {"es": "http://www.scielo.org.co/scielo.php?pid=example"}},
+        "article": {
+            "v12": [{"l": "en", "_": "A study about applied scientific methods"}, {"l": "es", "_": "Estudio sobre métodos científicos aplicados"}],
+            "v83": [{"l": "en", "_": "English abstract not selected"}, {"l": "es", "a": abstract}],
+            "v40": [{"_": "es"}],
+            "v65": [{"_": "20240500"}],
+            "v35": [{"_": "1234-5678"}],
+            "v10": [{"n": "Ana María", "s": "Pérez"}],
+            "v85": [{"k": "metodología", "l": "es"}, {"_": "nd"}],
+            "v30": [{"_": "Revista de Prueba"}],
+            "v237": [{"_": "10.1234/example.2024.01"}],
+        },
+    }
+
+
+def test_scielo_normalizes_legacy_articlemeta_fields():
+    article = normalize_article(
+        make_scielo_record(),
+        journal_subject_by_issn={"1234-5678": "Health Sciences"},
+        collection_names={"col": "Colombia"},
+    )
+    assert article is not None
+    assert article["id"] == "SCIELO:col:S1234-56782024000100001"
+    assert article["title"] == "Estudio sobre métodos científicos aplicados"
+    assert article["year"] == 2024
+    assert article["language"] == "es"
+    assert article["field"] == "Health Sciences"
+    assert article["authors"] == ["Ana María Pérez"]
+    assert article["doi"] == "10.1234/example.2024.01"
+    assert article["source_database"] == "SciELO"
+    assert article["source_collection"] == "Colombia"
+    assert article["url"].startswith("https://")
+
+
+def test_scielo_journal_subjects_use_issn_and_articlemeta_classification():
+    mapping = journal_subjects([{
+        "code": "1234-5678",
+        "issns": ["8765-4321"],
+        "v441": [{"_": "Health Sciences"}],
+    }])
+    assert mapping == {"1234-5678": "Health Sciences", "8765-4321": "Health Sciences"}
+
+
+def test_scielo_missing_language_is_inferred_by_catalog_cleaner():
+    record = make_scielo_record()
+    record["article"].pop("v40")
+    record["article"]["v12"] = [record["article"]["v12"][1]]
+    record["article"]["v83"] = [record["article"]["v83"][1]]
+    normalized = normalize_article(record)
+    cleaned = clean_catalog(pd.DataFrame([normalized]))
+    assert cleaned.iloc[0]["language"] == "es"
+    assert bool(cleaned.iloc[0]["language_inferred"])
+
+
+def test_scielo_sample_offsets_are_reproducible_and_in_bounds():
+    first = sample_offsets(total=12_345, page_size=100, pages_to_sample=5, seed=42)
+    assert first == sample_offsets(total=12_345, page_size=100, pages_to_sample=5, seed=42)
+    assert len(first) == 5
+    assert len(first) == len(set(first))
+    assert all(0 <= offset < 12_345 and offset % 100 == 0 for offset in first)
+
+
+def test_clean_catalog_deduplicates_doi_url_and_plain_identifier():
+    frame = make_catalog().iloc[:2].copy()
+    frame.loc[frame.index[0], "doi"] = "https://doi.org/10.1234/shared"
+    frame.loc[frame.index[1], "doi"] = "10.1234/shared"
+    frame.loc[frame.index[1], "title"] = "A different solar forecasting study"
+    cleaned = clean_catalog(frame)
+    assert len(cleaned) == 1

@@ -1,6 +1,7 @@
 flowchart LR
     A[OpenAlex Works API] -->|muestra por campo| B[Descarga reproducible<br/>JSONL comprimido]
-    B --> C[Limpieza y validación<br/>idioma, resúmenes, duplicados]
+    S[SciELO ArticleMeta API] -->|páginas aleatorias por colección| B
+    B --> C[Normalización y limpieza<br/>idioma, resúmenes, duplicados, fuente]
     C -->|catálogo y manifiesto| D[Catálogo local Parquet]
     D --> E[Perfil de tesis<br/>descripción + palabras clave]
     D --> F[Artículos<br/>multilingual-e5-small]

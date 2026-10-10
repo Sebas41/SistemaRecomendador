@@ -8,11 +8,13 @@ El prototipo usa el título y el resumen de cada artículo. El motor semántico 
 
 ## Fuente y construcción de datos
 
-Se usa OpenAlex, una fuente abierta de metadatos bibliográficos. La selección abarca artículos de 2016 a 2025 distribuidos entre los 26 campos académicos de OpenAlex. Se buscan hasta 300 trabajos por campo; cada campo debe aportar al menos 100. Se descartan registros retractados, títulos con menos de tres palabras, resúmenes fuera de 80 a 1.200 palabras, duplicados y registros sin idioma español o inglés identificable.
+Se integran OpenAlex y SciELO. OpenAlex aporta una muestra multidisciplinaria de artículos de 2016 a 2025, distribuida entre sus 26 campos académicos; se buscan hasta 300 trabajos por campo y cada campo debe aportar al menos 100. SciELO aporta una muestra aleatoria de páginas de ArticleMeta por colección nacional o temática, con ventana de procesamiento 2016–2025 y filtro local por año de publicación. Sus categorías disciplinares se conservan tal como aparecen en los metadatos de las revistas, sin equipararlas a los campos de OpenAlex.
 
-OpenAlex proporciona resúmenes como un índice de posiciones de palabras; el código reconstruye el texto antes del análisis. Si no informa el idioma, este se infiere del resumen y la inferencia queda identificada. El manifiesto registra fecha, filtros, tamaños por campo, idiomas y hashes de los archivos.
+Se descartan registros con títulos de menos de tres palabras, resúmenes fuera de 80 a 1.200 palabras, duplicados y registros sin idioma español o inglés identificable. OpenAlex permite excluir registros marcados como retractados; ArticleMeta no informa de manera consistente ese estado, por lo que los registros SciELO no se filtran con el mismo criterio. Las páginas seleccionadas en SciELO usan una semilla reproducible y no se ordenan por citaciones.
 
-Los atributos de cada artículo son identificador, título, resumen, autores, año, idioma, campo, tema, palabras clave, DOI, enlace y fuente. Cuando falte un atributo opcional, se presenta como no disponible.
+OpenAlex proporciona resúmenes como un índice de posiciones de palabras; el código reconstruye el texto antes del análisis. ArticleMeta entrega campos heredados codificados en JSON; el proceso normaliza título, resumen, autores, año, idioma, palabras clave, DOI y enlace. Si una fuente no informa el idioma, este se infiere del resumen y la inferencia queda identificada. El manifiesto registra fecha, filtros, tamaños por fuente, campo e idioma, y hashes de los archivos.
+
+Los atributos de cada artículo son identificador, título, resumen, autores, año, idioma, campo, tema, palabras clave, DOI, enlace, revista, base de procedencia y colección SciELO cuando aplica. Cuando falte un atributo opcional, se presenta como no disponible. La interfaz muestra la fuente y, para SciELO, la colección de la que procede el artículo.
 
 ## Representación y similitud
 
@@ -24,7 +26,7 @@ La referencia TF-IDF usa unigramas y bigramas, excluye palabras vacías inglesas
 
 Un estudiante nuevo obtiene recomendaciones desde su primera descripción, sin historial de lecturas o valoraciones. Un artículo nuevo se agrega tras validar sus metadatos y regenerar ambos índices. La aplicación consulta un catálogo local preparado y no conserva perfiles personales.
 
-El diagrama en arquitectura.mmd muestra el flujo: OpenAlex proporciona metadatos; el proceso de preparación limpia los datos y crea un catálogo; dos índices representan el contenido; la aplicación filtra y ordena resultados para que el estudiante los revise.
+El diagrama en arquitectura.mmd muestra el flujo: OpenAlex y SciELO ArticleMeta proporcionan metadatos; el proceso de preparación normaliza y limpia los datos, conserva su procedencia y crea un catálogo; dos índices representan el contenido; la aplicación filtra y ordena resultados para que el estudiante los revise.
 
 ## Evaluación
 
@@ -34,7 +36,7 @@ La evaluación manual ciega asigna 0 (no pertinente), 1 (parcialmente pertinente
 
 ## Sesgos, impacto y mitigación
 
-- **Cobertura disciplinar y de la fuente:** OpenAlex no incluye todos los trabajos por igual y asigna automáticamente los temas. Revisar la composición del catálogo, informar vacíos y sumar repositorios disciplinarios en una extensión.
+- **Cobertura disciplinar y de la fuente:** OpenAlex y SciELO cubren publicaciones de manera desigual; SciELO ofrece una muestra acotada por colecciones y sus categorías no son idénticas a los campos de OpenAlex. Revisar la composición por fuente y disciplina, informar vacíos y ampliar las colecciones o sumar repositorios disciplinarios.
 - **Idioma:** el catálogo y el rendimiento pueden variar entre inglés y español. Comparar consultas equivalentes, informar la cobertura y sumar publicaciones en español si la evaluación muestra una brecha.
 - **Selección por metadatos:** exigir resúmenes extensos excluye registros escasos. Documentar los descartes y considerar fuentes adicionales o una ruta para metadatos breves.
 - **Periodo:** el corte 2016–2025 puede dejar fuera trabajos clásicos. Mostrar el periodo y permitir material anterior en una versión futura.
@@ -58,9 +60,9 @@ Las mitigaciones se describen en el informe académico; su implementación no es
 
 ## Resultados y limitaciones observados
 
-La descarga produjo 7.800 registros muestreados. Después de los filtros de metadatos, la deduplicación y la selección de idioma, el catálogo contiene **6.641 artículos en los 26 campos**. Cada campo tiene entre 194 y 290 artículos válidos, por encima del mínimo de 100. Los registros sin DOI se deduplican por identificador y título, no se descartan por carecer de DOI.
+La extracción de OpenAlex produjo 7.800 registros candidatos y **6.641 artículos utilizables** en sus 26 campos. Cada campo aporta entre 194 y 290 artículos, por encima del mínimo de 100. SciELO consultó 19 colecciones y obtuvo una página aleatoria de registros en 18 de ellas; tras normalizar y deduplicar, añadió **1.152 artículos válidos** y el catálogo combinado tiene **7.793 artículos**. La muestra SciELO puede ampliarse a tres páginas por colección mediante la configuración del descargador. Los registros sin DOI se deduplican por identificador y título, no se descartan por carecer de DOI.
 
-La composición lingüística está desequilibrada: **6.404 artículos están en inglés (96,4 %) y 237 en español (3,6 %)**. En 124 artículos el idioma se infirió porque OpenAlex no lo proporcionó. Esta brecha limita el análisis de publicaciones en español; las consultas en español pueden recuperar artículos en inglés mediante el motor multilingüe. Se conserva el idioma del artículo como atributo para auditar los resultados.
+En el catálogo combinado, **6.625 artículos están en inglés (85,0 %) y 1.168 en español (15,0 %)**. SciELO aporta 931 de los artículos en español, frente a los 237 del catálogo OpenAlex de base. Esta muestra mejora la representación lingüística, aunque sigue concentrada en unas pocas categorías SciELO: Health Sciences (413), Applied Social Sciences (255) y Human Sciences (124). Las categorías se mantienen separadas de las 26 de OpenAlex y el análisis de sesgos informa la cobertura por fuente. El manifiesto local conserva los offsets y la semilla usados, además del hash de los datos, para identificar la extracción aunque el servicio cambie.
 
 El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3. **869 resúmenes (13,1 %)** superan el límite de 512 tokens y se truncan. Se generaron 90 resultados ordenados y 64 artículos únicos para la evaluación humana a ciegas. Las métricas de relevancia quedan pendientes de completar sus etiquetas. No se asume que el motor semántico supere a TF-IDF sin revisar los resultados.
 
@@ -69,5 +71,6 @@ El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3. **869 r
 - [OpenAlex: atributos de trabajos y resúmenes](https://help.openalex.org/data/works/attributes/).
 - [OpenAlex: campos académicos](https://help.openalex.org/data/fields/).
 - [OpenAlex: muestreo y paginación](https://help.openalex.org/api/paging/).
+- [SciELO ArticleMeta REST API](https://github.com/scieloorg/articles_meta/blob/master/docs/source/index.rst) y [cliente Python](https://github.com/scieloorg/articlemetaapi).
 - [Modelo multilingüe E5 Small](https://huggingface.co/intfloat/multilingual-e5-small).
 - scikit-learn: [TF-IDF](https://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html) y [similitud coseno](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.cosine_similarity.html).

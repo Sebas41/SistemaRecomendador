@@ -121,7 +121,15 @@ if submitted:
             score = float(article["score"])
             with st.container(border=True):
                 st.markdown(f"**{rank}. [{article['title']}]({url})**" if url else f"**{rank}. {article['title']}**")
-                st.caption(f"{authors_text} · {article['year']} · {article['field']} · similitud {score:.3f}")
+                database = article.get("source_database", "OpenAlex")
+                collection = article.get("source_collection")
+                source_label = f"{database} ({collection})" if collection else database
+                journal = article.get("source")
+                journal_label = f" · {journal}" if journal else ""
+                st.caption(
+                    f"{authors_text} · {article['year']} · {article['field']} · "
+                    f"fuente: {source_label}{journal_label} · similitud {score:.3f}"
+                )
                 st.write(article["abstract"])
                 if article.get("evidence"):
                     st.info(f"Fragmento relacionado: “{article['evidence']}”")

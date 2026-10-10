@@ -10,9 +10,9 @@ from pathlib import Path
 import pandas as pd
 from langdetect import DetectorFactory, LangDetectException, detect
 
-from .settings import CATALOG, DATA_MANIFEST, END_YEAR, MAX_ABSTRACT_WORDS, MIN_ABSTRACT_WORDS, MINIMUM_PER_FIELD, RAW_CATALOG, START_YEAR
+from .settings import CATALOG, DATA_MANIFEST, END_YEAR, MAX_ABSTRACT_WORDS, MIN_ABSTRACT_WORDS, MINIMUM_PER_FIELD, RAW_CATALOG, RAW_SCIELO_CATALOG, RAW_SCIELO_SAMPLE_MANIFEST, START_YEAR
 
-REQUIRED_COLUMNS = ["id", "title", "abstract", "authors", "year", "language", "field", "topic", "keywords", "doi", "url", "source"]
+REQUIRED_COLUMNS = ["id", "title", "abstract", "authors", "year", "language", "field", "topic", "keywords", "doi", "url", "source", "source_database", "source_collection"]
 DetectorFactory.seed = 42
 
 
@@ -25,6 +25,7 @@ def clean_catalog(frame: pd.DataFrame) -> pd.DataFrame:
     frame["title"] = frame["title"].fillna("").astype(str).str.replace(r"\s+", " ", regex=True).str.strip()
     frame["abstract"] = frame["abstract"].fillna("").astype(str).str.replace(r"\s+", " ", regex=True).str.strip()
     frame["field"] = frame["field"].fillna("Campo no disponible").astype(str)
+    frame["source_database"] = frame["source_database"].fillna("OpenAlex").astype(str)
     frame["year"] = pd.to_numeric(frame["year"], errors="coerce")
     frame["language"] = frame["language"].fillna("unknown").astype(str).str.lower()
     inferred = frame["language"].isin(["", "none", "nan", "unknown"])
@@ -52,7 +53,11 @@ def clean_catalog(frame: pd.DataFrame) -> pd.DataFrame:
     frame = frame.loc[valid].copy()
     frame = frame.drop_duplicates(subset="id", keep="first")
     # Missing DOI means the deduplication key is unknown, not shared by every such article.
-    frame["_doi_key"] = frame["doi"].fillna("").astype(str).str.casefold().str.strip()
+    frame["_doi_key"] = (
+        frame["doi"].fillna("").astype(str).str.casefold().str.strip()
+        .str.replace(r"^https?://(?:dx\.)?doi\.org/", "", regex=True)
+        .str.replace(r"^doi:\s*", "", regex=True)
+    )
     has_doi = frame["_doi_key"].ne("")
     frame = pd.concat([
         frame.loc[has_doi].drop_duplicates(subset="_doi_key", keep="first"),
@@ -75,33 +80,61 @@ def _read_raw_jsonl(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_catalog(raw_path: Path = RAW_CATALOG, output_path: Path = CATALOG) -> pd.DataFrame:
-    if not raw_path.exists():
-        raise FileNotFoundError(f"No existe {raw_path}. Ejecuta: python scripts/download_data.py")
-    frame = _read_raw_jsonl(raw_path)
+def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATALOG) -> pd.DataFrame:
+    raw_paths = [path for path in (raw_path, RAW_SCIELO_CATALOG) if path and path.exists()]
+    if not raw_paths:
+        raise FileNotFoundError(
+            f"No se encontró un catálogo crudo. Ejecuta: python scripts/download_data.py"
+        )
+    frames = [_read_raw_jsonl(path) for path in raw_paths]
+    frame = pd.concat(frames, ignore_index=True)
     cleaned = clean_catalog(frame)
-    field_counts = cleaned["field"].value_counts().to_dict()
+    openalex = cleaned[cleaned["source_database"].eq("OpenAlex")]
+    field_counts = openalex["field"].value_counts().to_dict()
     underfilled = {field: n for field, n in field_counts.items() if n < MINIMUM_PER_FIELD}
     if underfilled:
         raise ValueError(f"Hay campos con menos de {MINIMUM_PER_FIELD} artículos: {underfilled}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     cleaned.to_parquet(output_path, index=False)
     digest = hashlib.sha256(output_path.read_bytes()).hexdigest()
+    raw_sources = []
+    for path, raw_frame in zip(raw_paths, frames):
+        source_name = (
+            str(raw_frame["source_database"].dropna().mode().iloc[0])
+            if "source_database" in raw_frame and not raw_frame["source_database"].dropna().empty
+            else "SciELO" if "scielo" in path.name.casefold()
+            else "OpenAlex"
+        )
+        raw_sources.append({
+            "source": source_name,
+            "file": path.name,
+            "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "records": int(len(raw_frame)),
+        })
     manifest = {
-        "source": "OpenAlex Works API (https://api.openalex.org/works)",
-        "source_license": "CC0",
+        "source": "OpenAlex Works API and SciELO ArticleMeta API",
+        "source_license": {
+            "OpenAlex": "CC0",
+            "SciELO": "Article metadata; article-level reuse terms may vary by publication",
+        },
         "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
-        "source_file": raw_path.name,
-        "source_sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest(),
+        "source_file": raw_path.name if raw_path and raw_path.exists() else None,
+        "source_sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest() if raw_path and raw_path.exists() else None,
+        "raw_sources": raw_sources,
+        "scielo_sampling": (
+            json.loads(RAW_SCIELO_SAMPLE_MANIFEST.read_text(encoding="utf-8"))
+            if RAW_SCIELO_CATALOG in raw_paths and RAW_SCIELO_SAMPLE_MANIFEST.exists() else None
+        ),
         "catalog_file": output_path.name,
         "catalog_sha256": digest,
         "filters": {
             "type": "article",
             "publication_year": f"{START_YEAR}-{END_YEAR}",
+            "scielo_processing_date": f"{START_YEAR}-01-01 to {END_YEAR}-12-31",
             "abstract_words": f"{MIN_ABSTRACT_WORDS}-{MAX_ABSTRACT_WORDS}",
             "title_words": "3-100",
             "languages": ["en", "es"],
-            "retracted": False,
+            "retracted": "OpenAlex records marked retracted are excluded; SciELO status is not consistently provided by ArticleMeta",
         },
         "records": int(len(cleaned)),
         "raw_records": int(len(frame)),
@@ -110,7 +143,17 @@ def build_catalog(raw_path: Path = RAW_CATALOG, output_path: Path = CATALOG) -> 
         "inferred_language_records": int(cleaned["language_inferred"].sum()),
         "by_field": {str(k): int(v) for k, v in field_counts.items()},
         "by_language": {str(k): int(v) for k, v in cleaned["language"].value_counts().items()},
-        "language_detection": "OpenAlex language metadata; langdetect is used only when that metadata is missing.",
+        "by_source": {str(k): int(v) for k, v in cleaned["source_database"].value_counts().items()},
+        "by_source_language": {
+            f"{source}|{language}": int(count)
+            for (source, language), count in cleaned.groupby(["source_database", "language"]).size().items()
+        },
+        "by_source_field": {
+            f"{source}|{field}": int(count)
+            for (source, field), count in cleaned.groupby(["source_database", "field"]).size().items()
+        },
+        "scielo_field_note": "SciELO field labels follow the journal's ArticleMeta classification; they are not mapped to OpenAlex's 26 fields.",
+        "language_detection": "OpenAlex and SciELO ArticleMeta language metadata; langdetect is used only when source language metadata is missing.",
     }
     DATA_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     DATA_MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
