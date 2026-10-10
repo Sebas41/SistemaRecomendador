@@ -1,4 +1,4 @@
-# Ciencia a tu tesis
+# Recotesis
 
 Prototipo académico que recomienda artículos científicos de varias disciplinas a partir de una descripción del proyecto de grado o tesis. Las consultas y el catálogo admiten español e inglés. La aplicación ordena los artículos por afinidad temática; no mide calidad científica ni reemplaza la revisión académica.
 
