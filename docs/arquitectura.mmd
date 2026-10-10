@@ -1,0 +1,15 @@
+flowchart LR
+    A[OpenAlex Works API] -->|muestra por campo| B[Descarga reproducible<br/>JSONL comprimido]
+    B --> C[Limpieza y validación<br/>idioma, resúmenes, duplicados]
+    C -->|catálogo y manifiesto| D[Catálogo local Parquet]
+    D --> E[Perfil de tesis<br/>descripción + palabras clave]
+    D --> F[Artículos<br/>multilingual-e5-small]
+    D --> G[Artículos en inglés<br/>TF-IDF unigramas y bigramas]
+    E --> H[Motor semántico<br/>similitud coseno]
+    F --> H
+    E --> I[Motor de referencia<br/>similitud coseno]
+    G --> I
+    H --> J[Filtros<br/>campo, año, idioma]
+    I --> J
+    J --> K[Streamlit<br/>resultados y evidencia orientativa]
+    K --> L[Estudiante<br/>revisa pertinencia científica]
