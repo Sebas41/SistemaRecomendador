@@ -20,8 +20,15 @@ def article_text(row: pd.Series | dict[str, Any]) -> str:
 
 def _load_sentence_model(model_name: str = MODEL_NAME):
     from sentence_transformers import SentenceTransformer
+    import torch
 
-    return SentenceTransformer(model_name, device="cpu")
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
+    return SentenceTransformer(model_name, device=device)
 
 
 def encode_documents(catalog: pd.DataFrame, model: Any | None = None, batch_size: int = EMBEDDING_BATCH_SIZE, show_progress_bar: bool = True) -> np.ndarray:
@@ -87,7 +94,7 @@ def save_embeddings(catalog: pd.DataFrame, embeddings: np.ndarray, model: Any | 
     manifest_tmp.write_text(json.dumps({
         "model": MODEL_NAME,
         "revision": provenance["model_revision"],
-        "device": "cpu",
+        "device": str(getattr(model, "device", "cpu")),
         "normalized": True,
         "shape": list(embeddings.shape),
         "catalog_ids": catalog["id"].tolist(),
