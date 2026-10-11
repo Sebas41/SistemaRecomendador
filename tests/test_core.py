@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import sisreco.openalex as openalex
 from sisreco.catalog import clean_catalog
 from sisreco.engine import recommend
 from sisreco.evaluation import ndcg_at_k, precision_at_k
@@ -24,6 +25,58 @@ def test_valid_work_rejects_short_title_and_abstract():
         "is_retracted": False,
         "primary_topic": {"field": {"id": "fields/1"}},
     })
+
+
+def test_openalex_download_checkpoints_completed_fields(tmp_path, monkeypatch):
+    fields = [{"id": f"https://openalex.org/fields/{index}", "display_name": f"Field {index}"}
+              for index in range(26)]
+    monkeypatch.setattr(openalex, "academic_fields", lambda session: fields)
+
+    fail_once = True
+    first_field_calls = 0
+
+    def fake_field_records(field, **kwargs):
+        nonlocal fail_once, first_field_calls
+        field_number = field["id"].rsplit("/", 1)[-1]
+        if field_number == "0":
+            first_field_calls += 1
+        if field_number == "1" and fail_once:
+            fail_once = False
+            raise RuntimeError("Simulated interrupted request")
+        return [{
+            "id": f"https://openalex.org/W{field_number}_{index}",
+            "title": f"Research article {field_number} number {index}",
+            "abstract_inverted_index": {"research": [0], "findings": [1], "matter": [2]},
+            "publication_year": 2020,
+            "authorships": [],
+            "primary_topic": {"display_name": "Research", "field": {"id": field["id"]}},
+            "keywords": [],
+            "language": "en",
+            "doi": None,
+            "primary_location": {},
+        } for index in range(100)]
+
+    monkeypatch.setattr(openalex, "_field_sample_records", fake_field_records)
+    output = tmp_path / "works.jsonl.gz"
+    with pytest.raises(RuntimeError, match="Simulated interrupted request"):
+        openalex.download_catalog(
+            output, target_per_field=100, sample_size=100, max_attempts=1
+        )
+
+    assert openalex.download_catalog(
+        output, target_per_field=100, sample_size=100, max_attempts=1
+    ) == 2600
+    assert first_field_calls == 1
+    assert not list(tmp_path.glob("openalex_checkpoint_*"))
+
+
+def test_openalex_reads_api_key_from_project_env_file(tmp_path, monkeypatch):
+    module_path = tmp_path / "src" / "sisreco" / "openalex.py"
+    module_path.parent.mkdir(parents=True)
+    monkeypatch.setattr(openalex, "__file__", str(module_path))
+    monkeypatch.delenv("OPENALEX_API_KEY", raising=False)
+    (tmp_path / ".env").write_text('OPENALEX_API_KEY="local-test-key"\n', encoding="utf-8")
+    assert openalex._api_key() == "local-test-key"
 
 
 def make_catalog():

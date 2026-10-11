@@ -195,15 +195,27 @@ def _get_json(
     params: dict[str, Any] | None = None,
 ) -> Any:
     url = urljoin(f"{SCIELO_API_BASE_URL.rstrip('/')}/", endpoint.lstrip("/"))
+    last_error: Exception | None = None
     for attempt in range(5):
-        response = session.get(url, params=params or {}, timeout=(10, 60))
+        try:
+            response = session.get(url, params=params or {}, timeout=(10, 90))
+        except requests.RequestException as error:
+            last_error = error
+            time.sleep(min(2**attempt, 30))
+            continue
         if response.status_code == 429 or response.status_code >= 500:
             time.sleep(min(2**attempt, 30))
             continue
         response.raise_for_status()
         time.sleep(SCIELO_REQUEST_INTERVAL_SECONDS)
-        return response.json()
-    raise RuntimeError(f"SciELO ArticleMeta no respondió después de cinco intentos: {url}")
+        try:
+            return response.json()
+        except ValueError as error:
+            last_error = error
+            time.sleep(min(2**attempt, 30))
+    raise RuntimeError(
+        f"SciELO ArticleMeta no respondió después de cinco intentos: {url}"
+    ) from last_error
 
 
 def _collection_metadata(session: requests.Session) -> dict[str, str]:
@@ -231,6 +243,7 @@ def iter_scielo_records(
     pages_per_collection: int = SCIELO_PAGES_PER_COLLECTION,
     session: requests.Session | None = None,
     page_log: list[dict[str, Any]] | None = None,
+    page_cache_dir: Path | None = None,
 ) -> Any:
     """Muestrea páginas por colección y normaliza los artículos válidos."""
     if pages_per_collection <= 0:
@@ -273,11 +286,25 @@ def iter_scielo_records(
                         "page_size": SCIELO_PAGE_SIZE,
                         "available_records": total,
                     })
-                page = _get_json(
-                    session,
-                    "articles/",
-                    {**params, "limit": SCIELO_PAGE_SIZE, "offset": offset},
+                cache_path = (
+                    page_cache_dir / f"{collection}_{offset}.json.gz"
+                    if page_cache_dir is not None else None
                 )
+                if cache_path is not None and cache_path.exists():
+                    with gzip.open(cache_path, "rt", encoding="utf-8") as cached:
+                        page = json.load(cached)
+                else:
+                    page = _get_json(
+                        session,
+                        "articles/",
+                        {**params, "limit": SCIELO_PAGE_SIZE, "offset": offset},
+                    )
+                    if cache_path is not None:
+                        cache_path.parent.mkdir(parents=True, exist_ok=True)
+                        temporary = cache_path.with_suffix(".gz.tmp")
+                        with gzip.open(temporary, "wt", encoding="utf-8") as cached:
+                            json.dump(page, cached, ensure_ascii=False)
+                        temporary.replace(cache_path)
                 for item in page.get("objects", []):
                     normalized = normalize_article(item, subjects, collection_names)
                     if normalized:
@@ -301,12 +328,17 @@ def download_scielo_catalog(
     seen_ids: set[str] = set()
     seen_dois: set[str] = set()
     seen_titles: set[str] = set()
+    run_key = hashlib.sha256(
+        f"{SEED}|{START_YEAR}|{END_YEAR}|{pages_per_collection}|{','.join(collections)}".encode()
+    ).hexdigest()[:12]
+    page_cache_dir = output_path.parent / f"scielo_page_cache_{run_key}"
     try:
         with gzip.open(tmp_path, "wt", encoding="utf-8") as target:
             for article in iter_scielo_records(
                 collections=collections,
                 pages_per_collection=pages_per_collection,
                 page_log=page_log,
+                page_cache_dir=page_cache_dir,
             ):
                 title_key = " ".join(article["title"].casefold().split())
                 doi_key = (article.get("doi") or "").casefold().strip()
@@ -346,6 +378,9 @@ def download_scielo_catalog(
             "catalog_file": output_path.name,
             "catalog_sha256": hashlib.sha256(output_path.read_bytes()).hexdigest(),
         }, ensure_ascii=False, indent=2), encoding="utf-8")
+        import shutil
+
+        shutil.rmtree(page_cache_dir, ignore_errors=True)
     finally:
         tmp_path.unlink(missing_ok=True)
     return count

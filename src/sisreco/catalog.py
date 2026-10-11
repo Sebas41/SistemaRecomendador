@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 from langdetect import DetectorFactory, LangDetectException, detect
 
-from .settings import CATALOG, DATA_MANIFEST, END_YEAR, MAX_ABSTRACT_WORDS, MIN_ABSTRACT_WORDS, MINIMUM_PER_FIELD, RAW_CATALOG, RAW_SCIELO_CATALOG, RAW_SCIELO_SAMPLE_MANIFEST, START_YEAR
+from .settings import CATALOG, DATA_MANIFEST, END_YEAR, MAX_ABSTRACT_WORDS, MIN_ABSTRACT_WORDS, MINIMUM_PER_FIELD, RAW_CATALOG, RAW_OPENALEX_SAMPLE_MANIFEST, RAW_SCIELO_CATALOG, RAW_SCIELO_SAMPLE_MANIFEST, START_YEAR
 
 REQUIRED_COLUMNS = ["id", "title", "abstract", "authors", "year", "language", "field", "topic", "keywords", "doi", "url", "source", "source_database", "source_collection"]
 DetectorFactory.seed = 42
@@ -124,6 +124,10 @@ def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATAL
         "scielo_sampling": (
             json.loads(RAW_SCIELO_SAMPLE_MANIFEST.read_text(encoding="utf-8"))
             if RAW_SCIELO_CATALOG in raw_paths and RAW_SCIELO_SAMPLE_MANIFEST.exists() else None
+        ),
+        "openalex_sampling": (
+            json.loads(RAW_OPENALEX_SAMPLE_MANIFEST.read_text(encoding="utf-8"))
+            if RAW_CATALOG in raw_paths and RAW_OPENALEX_SAMPLE_MANIFEST.exists() else None
         ),
         "catalog_file": output_path.name,
         "catalog_sha256": digest,
