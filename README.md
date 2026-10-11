@@ -65,7 +65,7 @@ Escribe una descripción de al menos cinco palabras. Puedes añadir palabras cla
 python scripts/prepare_evaluation.py
 ~~~
 
-El archivo artifacts/evaluation_candidates.csv contiene resultados ordenados de perfiles en seis temas y consultas en inglés y español. El archivo artifacts/evaluation_ratings.csv presenta cada artículo una sola vez por perfil (64 juicios en esta muestra) para facilitar la evaluación; califica relevance como 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Después ejecuta:
+El archivo artifacts/evaluation_candidates.csv contiene resultados ordenados de perfiles en seis temas y consultas en inglés y español. El archivo artifacts/evaluation_ratings.csv presenta cada artículo una sola vez por perfil (80 juicios en esta muestra) para facilitar la evaluación; califica relevance como 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Después ejecuta:
 
 ~~~bash
 python scripts/score_evaluation.py

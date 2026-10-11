@@ -64,7 +64,7 @@ La extracción actual produjo **124.759 registros válidos de OpenAlex**, distri
 
 En el catálogo combinado, **103.734 artículos están en inglés (94,2 %) y 6.410 en español (5,8 %)**. OpenAlex aporta 3.702 artículos en español y SciELO 2.708. Aunque la incorporación de SciELO aumenta la cobertura en español, el inglés sigue predominando. Las categorías de SciELO se mantienen separadas de los 26 campos de OpenAlex y el análisis de sesgos informa la cobertura por fuente. El manifiesto local conserva la semilla, los filtros, los conteos y el hash de los datos para identificar esta extracción aunque el servicio cambie.
 
-El índice E5 trunca las entradas que superan el límite del modelo de 512 tokens; la cantidad correspondiente se registra en el manifiesto de vectores. La evaluación genera candidatos con perfiles bilingües de seis áreas y compara los motores sobre consultas inglesas y artículos candidatos comunes. Las métricas de relevancia dependen de completar la calificación humana a ciegas; no se asume que el motor semántico supere a TF-IDF sin esos juicios.
+El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MPS; **13.590 resúmenes (12,3 %)** superan el límite de 512 tokens y se truncan. La evaluación generó 90 resultados ordenados y **80 artículos únicos** para calificar, con perfiles bilingües de seis áreas y comparación de motores sobre consultas inglesas y candidatos comunes. Las métricas de relevancia dependen de completar la calificación humana a ciegas; no se asume que el motor semántico supere a TF-IDF sin esos juicios.
 
 ## Referencias técnicas
 
