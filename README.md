@@ -49,7 +49,7 @@ La extracción actual produjo 124.759 registros válidos de OpenAlex en sus 26 c
 
 Los originales quedan en data/raw/openalex_works.jsonl.gz. El catálogo procesado y su manifiesto quedan en data/processed/. Los vectores semánticos y el índice TF-IDF se guardan en artifacts/. Los archivos grandes se excluyen de Git. El manifiesto registra la fecha de extracción, los filtros y los hashes de origen y catálogo.
 
-La preparación del modelo usa CUDA cuando está disponible, Apple Metal (MPS) en equipos compatibles y CPU como alternativa; el manifiesto de vectores registra el dispositivo elegido.
+La preparación usa CUDA cuando está disponible, Apple Metal (MPS) en equipos compatibles y CPU como alternativa. También descarga el reranker multilingüe que utiliza la aplicación. Una vez preparados los datos y modelos, las consultas funcionan localmente.
 
 ## Ejecutar la aplicación
 
@@ -57,7 +57,7 @@ La preparación del modelo usa CUDA cuando está disponible, Apple Metal (MPS) e
 streamlit run app.py
 ~~~
 
-Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por área, años e idioma y elegir el motor semántico o TF-IDF. TF-IDF sirve para consultas en inglés. Los resultados muestran título, autores, año, resumen, enlace y similitud coseno. La puntuación ordena los resultados; no es una probabilidad ni una valoración de calidad.
+Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por área, años e idioma y elegir el recomendador semántico o TF-IDF. El recomendador semántico recupera los 500 candidatos más cercanos con multilingual-e5-small y los reordena con `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, un modelo multilingüe que compara la consulta con cada artículo. En consultas que incluyen los conceptos reconocidos de agentes de IA y arquitectura empresarial, también comprueba que los artículos cubran ambos. Si el catálogo no contiene esa combinación, muestra coincidencias parciales por separado y las etiqueta; así evita presentarlas como respuestas directas. Esta comprobación cubre esas dos familias de conceptos, no cualquier combinación temática. En búsquedas generales, se descartan candidatos con puntaje de reranking menor que cero y la app pide ajustar la búsqueda si no quedan resultados. TF-IDF se mantiene como referencia léxica para consultas en inglés. Los resultados muestran título, autores, año, resumen, enlace y puntaje de relevancia. El puntaje ordena resultados; no es una probabilidad ni una valoración de calidad.
 
 ## Evaluación manual y sesgos
 
@@ -65,7 +65,7 @@ Escribe una descripción de al menos cinco palabras. Puedes añadir palabras cla
 python scripts/prepare_evaluation.py
 ~~~
 
-El archivo artifacts/evaluation_candidates.csv contiene resultados ordenados de perfiles en seis temas y consultas en inglés y español. El archivo artifacts/evaluation_ratings.csv presenta cada artículo una sola vez por perfil (80 juicios en esta muestra) para facilitar la evaluación; califica relevance como 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Después ejecuta:
+El archivo artifacts/evaluation_candidates.csv contiene resultados ordenados de perfiles en seis temas y consultas en inglés y español. El archivo artifacts/evaluation_ratings.csv presenta cada artículo una sola vez por perfil para facilitar la evaluación; su cantidad se imprime al generar los archivos. Califica relevance como 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Después ejecuta:
 
 ~~~bash
 python scripts/score_evaluation.py

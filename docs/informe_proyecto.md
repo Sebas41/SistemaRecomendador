@@ -18,7 +18,9 @@ Los atributos de cada artículo son identificador, título, resumen, autores, a�
 
 ## Representación y similitud
 
-El motor semántico compara una descripción de investigación, con el prefijo query, con título y resumen de cada trabajo, con el prefijo passage. Calcula similitud coseno entre vectores normalizados y ordena los artículos según ese valor. La puntuación es una similitud textual, no una probabilidad, una citación futura ni una medida de calidad académica. El modelo acepta como máximo 512 tokens por entrada y trunca los textos que exceden ese límite.
+La primera etapa representa la descripción con el prefijo `query:` y el título y resumen de cada trabajo con `passage:` usando multilingual-e5-small. Recupera los 500 candidatos más cercanos por similitud coseno. Una segunda etapa compara cada par consulta-artículo con el cross-encoder multilingüe `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1` y vuelve a ordenar los candidatos. En búsquedas generales, los puntajes negativos se descartan; son señales de ordenamiento, no probabilidades ni medidas de calidad académica. El reranker se entrenó para recuperación multilingüe sobre mMARCO, una traducción de MS MARCO a 14 idiomas, incluido el español. Ambos modelos funcionan localmente una vez descargados. E5 admite como máximo 512 tokens por entrada y trunca los textos que exceden ese límite.
+
+Para consultas que contienen los conceptos de agentes de inteligencia artificial y arquitectura empresarial, el prototipo también comprueba su presencia en el título, resumen, tema o palabras clave de cada candidato. Si hay artículos que cubren ambos, prioriza ese conjunto. Si no los hay, presenta coincidencias parciales separadas y señala cuál concepto cubre cada artículo. Este control bilingüe se basa en un vocabulario acotado de sinónimos y no generaliza todavía a cualquier combinación de conceptos.
 
 La referencia TF-IDF usa unigramas y bigramas, excluye palabras vacías inglesas y limita su vocabulario a 30.000 características. Depende de coincidencias de palabras; por eso se evalúa en inglés. La comparación de motores emplea la misma consulta, los mismos filtros y los mismos artículos candidatos.
 
@@ -26,7 +28,7 @@ La referencia TF-IDF usa unigramas y bigramas, excluye palabras vacías inglesas
 
 Un estudiante nuevo obtiene recomendaciones desde su primera descripción, sin historial de lecturas o valoraciones. Un artículo nuevo se agrega tras validar sus metadatos y regenerar ambos índices. La aplicación consulta un catálogo local preparado y no conserva perfiles personales.
 
-El diagrama en arquitectura.mmd muestra el flujo: OpenAlex y SciELO ArticleMeta proporcionan metadatos; el proceso de preparación normaliza y limpia los datos, conserva su procedencia y crea un catálogo; dos índices representan el contenido; la aplicación filtra y ordena resultados para que el estudiante los revise.
+El diagrama en arquitectura.mmd muestra el flujo: OpenAlex y SciELO ArticleMeta proporcionan metadatos; la preparación normaliza y limpia los datos, conserva su procedencia y crea un catálogo; multilingual-e5-small recupera candidatos, el cross-encoder multilingüe los reordena y TF-IDF sirve como referencia; la aplicación filtra los resultados para que el estudiante los revise.
 
 ## Evaluación
 
@@ -64,7 +66,9 @@ La extracción actual produjo **124.759 registros válidos de OpenAlex**, distri
 
 En el catálogo combinado, **103.734 artículos están en inglés (94,2 %) y 6.410 en español (5,8 %)**. OpenAlex aporta 3.702 artículos en español y SciELO 2.708. Aunque la incorporación de SciELO aumenta la cobertura en español, el inglés sigue predominando. Las categorías de SciELO se mantienen separadas de los 26 campos de OpenAlex y el análisis de sesgos informa la cobertura por fuente. El manifiesto local conserva la semilla, los filtros, los conteos y el hash de los datos para identificar esta extracción aunque el servicio cambie.
 
-El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MPS; **13.590 resúmenes (12,3 %)** superan el límite de 512 tokens y se truncan. La evaluación generó 90 resultados ordenados y **80 artículos únicos** para calificar, con perfiles bilingües de seis áreas y comparación de motores sobre consultas inglesas y candidatos comunes. Las métricas de relevancia dependen de completar la calificación humana a ciegas; no se asume que el motor semántico supere a TF-IDF sin esos juicios.
+El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MPS; **13.590 resúmenes (12,3 %)** superan el límite de 512 tokens y se truncan. El reranker se aplica a la lista corta de candidatos; en consultas generales se descartan puntajes negativos, mientras que las consultas con conceptos reconocidos usan el control de cobertura descrito arriba. La evaluación genera perfiles bilingües en seis áreas y compara el recomendador semántico con TF-IDF para consultas inglesas. Las métricas de relevancia dependen de completar la calificación humana a ciegas; la selección del reranker se comprobó además con búsquedas de prueba que incluyen términos ambiguos.
+
+La consulta de prueba «agentes de inteligencia artificial para la arquitectura empresarial» detecta ambos conceptos, pero el catálogo no contiene artículos que coincidan con ambos en sus metadatos textuales. La aplicación informa esa ausencia y separa los resultados parciales: por ejemplo, un artículo sobre práctica de arquitectura empresarial y trabajos sobre agentes de IA en otros ámbitos. Los artículos sobre arquitectura de mampostería y tácticas feministas, señalados en la prueba inicial, no aparecen como recomendaciones. Esto muestra una limitación de cobertura del catálogo: el reranking mejora el orden y el control de conceptos evita confundir términos, pero ninguno puede crear literatura ausente.
 
 ## Referencias técnicas
 
@@ -73,4 +77,5 @@ El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MP
 - [OpenAlex: muestreo y paginación](https://help.openalex.org/api/paging/).
 - [SciELO ArticleMeta REST API](https://github.com/scieloorg/articles_meta/blob/master/docs/source/index.rst) y [cliente Python](https://github.com/scieloorg/articlemetaapi).
 - [Modelo multilingüe E5 Small](https://huggingface.co/intfloat/multilingual-e5-small).
+- [Cross-encoder multilingüe mMARCO](https://huggingface.co/cross-encoder/mmarco-mMiniLMv2-L12-H384-v1), entrenado para reordenar pasajes según su relevancia para una consulta.
 - scikit-learn: [TF-IDF](https://scikit-learn.org/stable/modules/generated/sklearn.feature_extraction.text.TfidfVectorizer.html) y [similitud coseno](https://scikit-learn.org/stable/modules/generated/sklearn.metrics.pairwise.cosine_similarity.html).
