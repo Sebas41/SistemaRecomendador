@@ -16,7 +16,13 @@ python -m pip install -r requirements-lock.txt
 
 Para instalar en Python 3.11, usa python -m pip install -e ".[dev]". El archivo requirements-lock.txt fija las versiones exactas comprobadas en el entorno de desarrollo.
 
-OpenAlex ofrece una clave gratuita para aumentar la cuota de consultas; no es obligatoria para una muestra moderada. Si tienes una clave, defínela como variable de entorno OPENALEX_API_KEY. No la guardes en el repositorio.
+OpenAlex ofrece una clave gratuita para aumentar la cuota de consultas. Crea el archivo local desde la plantilla y reemplaza el valor de ejemplo; `.env` está excluido de Git:
+
+~~~bash
+cp .env.example .env
+~~~
+
+La clave también puede definirse en la variable de entorno `OPENALEX_API_KEY`. No la compartas ni la guardes en el repositorio.
 
 ## Preparar los datos y el índice
 
@@ -25,21 +31,25 @@ python scripts/download_data.py
 python scripts/build_index.py
 ~~~
 
-El proceso consulta los campos académicos actuales de OpenAlex y crea muestras con semilla fija. Busca hasta 300 artículos válidos por cada uno de sus 26 campos; requiere un mínimo de 100. También elige hasta tres páginas aleatorias de 100 registros por cada colección SciELO incluida. La muestra usa la ventana de procesamiento de ArticleMeta de 2016 a 2025 y luego filtra por año de publicación. El ritmo se limita para respetar el servicio; descargar todas las colecciones puede tardar varios minutos. Ambos orígenes se normalizan al mismo esquema, se deduplican por identificador, DOI normalizado y título, y conservan su procedencia en `source_database`.
+El proceso consulta los campos académicos actuales de OpenAlex y crea muestras con semilla fija. Busca hasta 4.800 artículos válidos por cada uno de sus 26 campos, a partir de muestras de hasta 6.000 trabajos por intento; cada campo debe aportar al menos 100. SciELO elige hasta tres páginas aleatorias de 100 registros por cada colección incluida. La muestra usa la ventana de procesamiento de ArticleMeta de 2016 a 2025 y luego filtra por año de publicación. OpenAlex guarda un checkpoint por campo y SciELO por página para poder reanudar una extracción interrumpida. Ambos orígenes se normalizan al mismo esquema, se deduplican por identificador, DOI normalizado y título, y conservan su procedencia en `source_database`.
+
+La preparación exige por defecto un catálogo limpio de al menos 100.000 artículos y se detiene con un mensaje si no alcanza ese tamaño. El API de OpenAlex tiene una cuota diaria anónima compartida; se recomienda usar una clave propia gratuita con `.env` para esta descarga amplia.
 
 Para preparar solo una fuente o ajustar el tamaño de SciELO:
 
 ~~~bash
-python scripts/download_data.py --sources scielo --scielo-pages-per-collection 5
+python scripts/download_data.py --sources scielo --scielo-pages-per-collection 5 --minimum-catalog-size 0
 python scripts/download_data.py --sources openalex
-python scripts/download_data.py --sources scielo --scielo-collections col mex scl
+python scripts/download_data.py --sources scielo --scielo-collections col mex scl --minimum-catalog-size 0
 ~~~
 
 La preparación combina los archivos crudos disponibles en `data/raw/`, así que los originales de OpenAlex y SciELO se conservan por separado. Las clasificaciones de SciELO siguen las categorías de sus revistas y no se equiparan artificialmente con los 26 campos de OpenAlex. SciELO publica metadatos ArticleMeta en un esquema JSON heredado; el código convierte título, resumen, autores, idioma, palabras clave, año, DOI y enlaces. Los términos de reutilización pueden depender de cada publicación; esta versión usa metadatos y resúmenes, no descarga el cuerpo completo.
 
-La muestra OpenAlex preparada el 10 de octubre de 2026 produjo 7.800 registros candidatos y 6.641 artículos utilizables. En la extracción de SciELO se consultaron 19 colecciones y se obtuvo una página de registros en 18 de ellas; quedaron 1.152 artículos válidos tras la normalización y deduplicación. El catálogo combinado tiene 7.793 artículos: 6.625 en inglés y 1.168 en español. La muestra SciELO local usa una página por colección; el valor predeterminado para nuevas descargas es tres. El manifiesto registra offsets elegidos, filtros, conteos y hashes para identificar esta versión. La interfaz permite consultar en ambos idiomas; para responder en español puede recomendar publicaciones cuyo idioma sea inglés.
+La extracción actual produjo 124.759 registros válidos de OpenAlex en sus 26 campos y consultó tres páginas por cada una de las 19 colecciones SciELO. Tras combinar ambas fuentes, filtrar metadatos y deduplicar, el catálogo contiene **110.144 artículos**: 106.615 de OpenAlex y 3.529 de SciELO. De ellos, 103.734 están en inglés y 6.410 en español. El manifiesto local conserva fecha, filtros, conteos por campo e idioma y hashes para identificar esta versión. La interfaz admite consultas en ambos idiomas y puede recomendar artículos en inglés para una consulta en español.
 
 Los originales quedan en data/raw/openalex_works.jsonl.gz. El catálogo procesado y su manifiesto quedan en data/processed/. Los vectores semánticos y el índice TF-IDF se guardan en artifacts/. Los archivos grandes se excluyen de Git. El manifiesto registra la fecha de extracción, los filtros y los hashes de origen y catálogo.
+
+La preparación del modelo usa CUDA cuando está disponible, Apple Metal (MPS) en equipos compatibles y CPU como alternativa; el manifiesto de vectores registra el dispositivo elegido.
 
 ## Ejecutar la aplicación
 
