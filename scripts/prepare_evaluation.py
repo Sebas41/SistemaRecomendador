@@ -5,7 +5,7 @@ import json
 import random
 import pandas as pd
 
-from sisreco.engine import _load_sentence_model, load_embeddings, recommend
+from sisreco.engine import _load_reranker, _load_sentence_model, load_embeddings, recommend
 from sisreco.settings import ARTIFACTS_DIR, CATALOG
 
 PROFILES = [
@@ -23,6 +23,7 @@ def main():
         raise SystemExit("Falta el catálogo. Ejecuta primero: python scripts/download_data.py")
     catalog = pd.read_parquet(CATALOG)
     model = _load_sentence_model()
+    reranker = _load_reranker()
     vectors = load_embeddings(catalog)
     rng = random.Random(42)
     engine_to_label = {"semantico":"A","tfidf":"B"}
@@ -36,7 +37,8 @@ def main():
             # Spanish requests search English and Spanish articles to test cross-language retrieval.
             candidate_language = "en" if language == "en" else "Todos"
             semantic = recommend(catalog, query, engine="semantico", top_k=5, embeddings=vectors,
-                model=model, fields=profile["fields"], language=candidate_language, generate_evidence=False)
+                model=model, reranker=reranker, fields=profile["fields"], language=candidate_language,
+                generate_evidence=False)
             outputs = {"semantico":semantic}
             if language == "en":
                 outputs["tfidf"] = recommend(catalog, query, engine="tfidf", top_k=5,

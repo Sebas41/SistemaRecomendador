@@ -104,6 +104,14 @@ class FakeModel:
         return np.asarray(vectors, dtype=np.float32)
 
 
+class FakeReranker:
+    def predict(self, pairs, **kwargs):
+        return np.asarray([
+            2.0 if any(term in passage.lower() for term in ("business process", "solar energy")) else -2.0
+            for _, passage in pairs
+        ], dtype=np.float32)
+
+
 def test_semantic_recommender_ranks_and_filters_articles():
     catalog = make_catalog().iloc[:2].reset_index(drop=True)
     embeddings = np.asarray([[1, 0], [0, 1]], dtype=np.float32)
@@ -112,6 +120,7 @@ def test_semantic_recommender_ranks_and_filters_articles():
         "Research project about solar energy forecasting",
         embeddings=embeddings,
         model=FakeModel(),
+        reranker=FakeReranker(),
         fields=["Energy"],
         min_year=2022,
         max_year=2022,
@@ -119,7 +128,103 @@ def test_semantic_recommender_ranks_and_filters_articles():
         generate_evidence=False,
     )
     assert results["id"].tolist() == ["W1"]
-    assert np.isclose(results.iloc[0]["score"], 1.0)
+    assert np.isclose(results.iloc[0]["score"], 2.0)
+    assert np.isclose(results.iloc[0]["semantic_score"], 1.0)
+
+
+def test_semantic_reranker_removes_polysemy_mismatch():
+    catalog = pd.DataFrame([
+        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "AI for masonry architecture"},
+        {**make_catalog().iloc[0].to_dict(), "id": "business", "title": "AI agents for enterprise business process architecture"},
+    ])
+    vectors = np.asarray([[0, 1], [1, 0]], dtype=np.float32)
+    results = recommend(
+        catalog,
+        "agentes de inteligencia artificial para arquitectura empresarial",
+        embeddings=vectors,
+        model=FakeModel(),
+        reranker=FakeReranker(),
+        generate_evidence=False,
+    )
+    assert results["id"].tolist() == ["business"]
+
+
+def test_semantic_recommender_abstains_when_all_candidates_are_irrelevant():
+    catalog = make_catalog().iloc[:1].reset_index(drop=True)
+    vectors = np.asarray([[1, 0]], dtype=np.float32)
+    class IrrelevantReranker:
+        def predict(self, pairs, **kwargs):
+            return np.full(len(pairs), -1.0, dtype=np.float32)
+
+    results = recommend(
+        catalog,
+        "Research project about solar energy",
+        embeddings=vectors,
+        model=FakeModel(),
+        reranker=IrrelevantReranker(),
+        generate_evidence=False,
+    )
+    assert results.empty
+
+
+def test_multiconcept_query_prefers_articles_covering_all_concepts():
+    catalog = pd.DataFrame([
+        {**make_catalog().iloc[0].to_dict(), "id": "direct", "title": "AI agents for enterprise architecture governance"},
+        {**make_catalog().iloc[0].to_dict(), "id": "agent", "title": "Artificial intelligence agents for clinical research"},
+        {**make_catalog().iloc[0].to_dict(), "id": "architecture", "title": "Enterprise architecture in organizations"},
+        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "Masonry architecture and structural behavior"},
+    ])
+    vectors = np.asarray([[1, 0], [1, 0], [1, 0], [1, 0]], dtype=np.float32)
+    results = recommend(
+        catalog,
+        "agentes de inteligencia artificial para la arquitectura empresarial",
+        embeddings=vectors,
+        model=FakeModel(),
+        reranker=FakeReranker(),
+        generate_evidence=False,
+    )
+    assert results["id"].tolist() == ["direct"]
+    assert results.iloc[0]["match_scope"] == "direct"
+    assert results.iloc[0]["matched_concepts"] == ["agentes de IA", "arquitectura empresarial"]
+
+
+def test_multiconcept_query_labels_and_distributes_partial_matches():
+    catalog = pd.DataFrame([
+        {**make_catalog().iloc[0].to_dict(), "id": "agent", "title": "Artificial intelligence agents for clinical research"},
+        {**make_catalog().iloc[0].to_dict(), "id": "architecture", "title": "Enterprise architecture in organizations"},
+        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "Masonry architecture and structural behavior"},
+    ])
+    vectors = np.asarray([[1, 0], [1, 0], [1, 0]], dtype=np.float32)
+    results = recommend(
+        catalog,
+        "agentes de inteligencia artificial para la arquitectura empresarial",
+        embeddings=vectors,
+        model=FakeModel(),
+        reranker=FakeReranker(),
+        top_k=5,
+        generate_evidence=False,
+    )
+    assert set(results["id"]) == {"agent", "architecture"}
+    assert results["match_scope"].eq("partial").all()
+    assert set(results.iloc[0]["matched_concepts"] + results.iloc[1]["matched_concepts"]) == {
+        "agentes de IA", "arquitectura empresarial"
+    }
+
+
+def test_multiconcept_query_reports_when_catalog_has_no_concept_matches():
+    catalog = pd.DataFrame([
+        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "Masonry architecture and structural behavior"},
+    ])
+    results = recommend(
+        catalog,
+        "agentes de inteligencia artificial para la arquitectura empresarial",
+        embeddings=np.asarray([[1, 0]], dtype=np.float32),
+        model=FakeModel(),
+        reranker=FakeReranker(),
+        generate_evidence=False,
+    )
+    assert results.empty
+    assert results.attrs["match_scope"] == "none"
 
 
 def test_recommender_rejects_short_queries_and_unknown_engines():

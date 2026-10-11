@@ -5,7 +5,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from sisreco.engine import _load_sentence_model, load_embeddings, recommend
+from sisreco.engine import _load_reranker, _load_sentence_model, load_embeddings, recommend
 from sisreco.settings import CATALOG, DATA_MANIFEST
 
 st.set_page_config(page_title="Ciencia a tu tesis", page_icon="📚", layout="wide")
@@ -21,6 +21,11 @@ def load_catalog() -> pd.DataFrame:
 @st.cache_resource
 def load_model():
     return _load_sentence_model()
+
+
+@st.cache_resource
+def load_reranker():
+    return _load_reranker()
 
 
 @st.cache_resource
@@ -66,8 +71,11 @@ with st.sidebar:
     )
     language_label = st.selectbox("Idioma del artículo", ["Todos", "Inglés", "Español"])
     language = {"Todos": "Todos", "Inglés": "en", "Español": "es"}[language_label]
-    engine_label = st.radio("Criterio de similitud", ["Semántico multilingüe", "TF-IDF (inglés)"])
-    engine = "semantico" if engine_label == "Semántico multilingüe" else "tfidf"
+    engine_label = st.radio(
+        "Criterio de recomendación",
+        ["Semántico + reordenamiento bilingüe", "TF-IDF (inglés)"],
+    )
+    engine = "semantico" if engine_label == "Semántico + reordenamiento bilingüe" else "tfidf"
     top_k = st.radio("Resultados", [5, 10], horizontal=True)
     submitted = st.button("Buscar artículos", type="primary", use_container_width=True)
 
@@ -77,7 +85,7 @@ summary[1].metric("Campos académicos", f"{catalog['field'].nunique():,}")
 summary[2].metric("Consultas", "Español e inglés")
 
 if manifest:
-    st.caption(f"Fuente: OpenAlex · muestra recopilada el {manifest.get('retrieved_at_utc', 'fecha no disponible')[:10]} · catálogo reproducible.")
+    st.caption(f"Fuentes: OpenAlex y SciELO · extracción de OpenAlex: {manifest.get('retrieved_at_utc', 'fecha no disponible')[:10]} · catálogo reproducible.")
 
 if submitted:
     query = " ".join(part.strip() for part in [query, keywords] if part and part.strip())
@@ -91,6 +99,7 @@ if submitted:
         try:
             model = load_model() if engine == "semantico" else None
             vectors = load_vectors(tuple(catalog["id"].tolist())) if engine == "semantico" else None
+            reranker = load_reranker() if engine == "semantico" else None
             results = recommend(
                 catalog,
                 query,
@@ -98,6 +107,7 @@ if submitted:
                 top_k=top_k,
                 embeddings=vectors,
                 model=model,
+                reranker=reranker,
                 fields=selected_fields,
                 min_year=year_range[0],
                 max_year=year_range[1],
@@ -108,10 +118,18 @@ if submitted:
             st.code("python scripts/build_index.py", language="bash")
             st.stop()
     if results.empty:
-        st.info("No hay resultados. Prueba con otros términos o amplía los filtros.")
+        if results.attrs.get("match_scope") == "none":
+            st.info("El catálogo no contiene artículos que coincidan con los dos conceptos detectados. Prueba una consulta más amplia o cambia los filtros.")
+        else:
+            st.info("No encontré artículos con relevancia suficiente. Prueba con otros términos o amplía los filtros.")
     else:
-        st.subheader(f"{len(results)} artículos relacionados")
-        st.caption("Las puntuaciones son similitudes coseno para ordenar resultados; no son probabilidades ni medidas de calidad.")
+        partial = "match_scope" in results and results["match_scope"].eq("partial").any()
+        if partial:
+            st.subheader("No encontré artículos que unan todos los conceptos")
+            st.warning("Estas son coincidencias parciales: cada artículo cubre al menos uno de los conceptos de búsqueda, pero no ambos. El catálogo actual puede no tener literatura suficiente sobre esta combinación.")
+        else:
+            st.subheader(f"{len(results)} artículos relacionados")
+        st.caption("Se recuperan candidatos por similitud semántica y se reordenan con un modelo bilingüe. El puntaje no es una probabilidad ni una medida de calidad académica.")
         for rank, (_, article) in enumerate(results.iterrows(), start=1):
             authors = article["authors"] if isinstance(article["authors"], list) else []
             authors_text = ", ".join(authors[:5]) or "Autores no disponibles"
@@ -128,8 +146,11 @@ if submitted:
                 journal_label = f" · {journal}" if journal else ""
                 st.caption(
                     f"{authors_text} · {article['year']} · {article['field']} · "
-                    f"fuente: {source_label}{journal_label} · similitud {score:.3f}"
+                    f"fuente: {source_label}{journal_label} · "
+                    f"{'relevancia' if engine == 'semantico' else 'similitud'} {score:.3f}"
                 )
+                if partial and article.get("matched_concepts"):
+                    st.caption("Coincide con: " + ", ".join(article["matched_concepts"]))
                 st.write(article["abstract"])
                 if article.get("evidence"):
                     st.info(f"Fragmento relacionado: “{article['evidence']}”")
