@@ -32,9 +32,25 @@ El diagrama en arquitectura.mmd muestra el flujo: OpenAlex y SciELO ArticleMeta 
 
 ## Evaluación
 
-Se preparan seis temas de investigación en seis áreas, cada uno con consultas paralelas en inglés y español. La comparación entre los dos motores usa las consultas en inglés. Las consultas bilingües evalúan el motor semántico.
+### Tarea
 
-La evaluación manual ciega asigna 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Precision@5 y nDCG@5 resumen los primeros cinco resultados que una persona haya calificado. No se informa recall, porque no hay etiquetas de relevancia para todo el catálogo.
+Dada la descripción de un proyecto de grado o tesis, en español o inglés y con palabras clave opcionales, el sistema devuelve 10 artículos temáticamente pertinentes como punto de partida de la revisión bibliográfica. El sistema mide afinidad temática, no calidad científica: un artículo bien ubicado puede tener un diseño metodológico inadecuado para el estudiante.
+
+### Métricas y metas
+
+Las métricas y metas se fijaron antes de comparar configuraciones y no se modifican al conocer los resultados. La evaluación se hace sin filtros de campo, año ni idioma, igual que una búsqueda abierta en la aplicación.
+
+| Métrica | Cómo se obtiene | Para qué sirve | Meta |
+|---|---|---|---|
+| **MRR@10, ítem conocido** (principal) | Automática: para cada artículo de origen se redacta una descripción de proyecto que este artículo respondería; se registra la posición en que aparece dentro del top 10 | Mide si el sistema encuentra el artículo que corresponde a una descripción de proyecto | La configuración elegida supera a la de referencia por ≥ +0,05, con p < 0,05 (prueba de aleatorización pareada) |
+| Recall@10, ítem conocido | Automática: proporción de consultas cuyo artículo de origen aparece en el top 10 | Mide si ese artículo aparece en lo que ve el estudiante | ≥ 0,60 (orientativa) |
+| Brecha de MRR@10 entre consultas en español y en inglés | Automática: diferencia absoluta entre el MRR@10 de las consultas redactadas en cada idioma | Mide si las consultas en español funcionan igual de bien | ≤ 0,10 |
+| Precision@10 por topic | Automática: un resultado es pertinente si comparte el topic de OpenAlex con el artículo de origen | Mide la coherencia temática del top 10 | ≥ +0,05 frente a la configuración de referencia |
+| P@5 y nDCG@5 con juicio humano | Verificación ciega con escala 0 (no pertinente), 1 (parcial) y 2 (directa) sobre perfiles bilingües; el nDCG ideal se calcula con todos los juicios disponibles para el perfil | Comprueba que los resultados automáticos se traducen en utilidad real | P@5 (grado ≥ 1) ≥ 0,70 |
+| Exposición por idioma y fuente | Automática: proporción de artículos en español y de SciELO en el top 10 frente a su proporción en el catálogo | Evidencia para el análisis de sesgos | Se reporta, sin meta |
+| Diversidad (ILD@10) | Automática: 1 − coseno medio entre los pares de artículos del top 10, con un mismo espacio de vectores para todas las configuraciones | Evidencia de sobreespecialización para el análisis de sesgos | Se reporta, sin meta |
+
+El ítem conocido y el topic son aproximaciones automáticas. Miden propiedades relacionadas con la utilidad, pero no la utilidad misma: una consulta tiene un solo artículo de origen aunque el catálogo contenga otros igualmente pertinentes, y el topic de OpenAlex se asigna automáticamente. Por eso se incluye la verificación humana. La meta que obliga es la diferencia frente a la configuración de referencia con significancia estadística; las metas absolutas son orientativas.
 
 ## Sesgos, impacto y mitigación
 
