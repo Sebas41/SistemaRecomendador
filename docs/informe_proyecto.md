@@ -4,7 +4,7 @@
 
 Ciencia a tu tesis recomienda artículos científicos para apoyar la búsqueda bibliográfica de estudiantes que preparan proyectos de grado y tesis. El estudiante escribe una descripción en español o inglés y recibe trabajos ordenados por afinidad temática. Cada recomendación ofrece metadatos, resumen, enlace y un fragmento del resumen cercano a la consulta.
 
-El prototipo usa el título y el resumen de cada artículo. El motor semántico multilingüe constituye la estrategia principal; el índice TF-IDF sirve como referencia en inglés. El sistema no usa interacciones entre usuarios, no mide calidad metodológica y no reemplaza la revisión que debe hacer el estudiante.
+El prototipo usa el título y el resumen de cada artículo. El motor semántico multilingüe constituye la estrategia principal; el índice TF-IDF sirve como referencia en inglés. También incluye una recuperación híbrida experimental, que combina señales semánticas y léxicas, pero no sustituye el motor principal hasta completar la evaluación humana. El sistema no usa interacciones entre usuarios, no mide calidad metodológica y no reemplaza la revisión que debe hacer el estudiante.
 
 ## Fuente y construcción de datos
 
@@ -26,6 +26,8 @@ Todas las consultas textuales siguen el mismo criterio de recuperación y reorde
 
 La referencia TF-IDF usa unigramas y bigramas, excluye palabras vacías inglesas y limita su vocabulario a 30.000 características. Depende de coincidencias de palabras; por eso se evalúa en inglés. La comparación de motores emplea la misma consulta, los mismos filtros y los mismos artículos candidatos.
 
+El motor híbrido experimental usa otro índice TF-IDF sobre todo el catálogo. Normaliza mayúsculas y acentos sin traducir, representa el título dos veces junto con resumen y palabras clave, y usa unigramas y bigramas con hasta 60.000 características. E5 y el índice léxico recuperan hasta 500 candidatos cada uno; Reciprocal Rank Fusion combina sus posiciones con constante 60. Después, el cross-encoder puede revisar la lista fusionada y una segunda fusión ponderada combina recuperación y reordenamiento. Se registran las posiciones y puntuaciones de las etapas para diagnosticar errores. La evaluación decidirá si una configuración de 50, 100 o 500 candidatos, texto simple o metadatos enriquecidos y pesos de 0,25, 0,50 o 0,75 mejora la pertinencia.
+
 ## Arranque en frío y arquitectura
 
 Un estudiante nuevo obtiene recomendaciones desde su primera descripción, sin historial de lecturas o valoraciones. Un artículo nuevo se agrega tras validar sus metadatos y regenerar ambos índices. La aplicación consulta un catálogo local preparado. Conserva la consulta, los filtros y hasta diez listas anteriores únicamente en la sesión de Streamlit para permitir volver atrás; no mantiene cuentas ni perfiles persistentes.
@@ -34,9 +36,9 @@ El diagrama en arquitectura.mmd muestra el flujo: OpenAlex y SciELO ArticleMeta 
 
 ## Evaluación
 
-Se preparan seis temas de investigación en seis áreas, cada uno con consultas paralelas en inglés y español. La comparación entre los dos motores usa las consultas en inglés. Las consultas bilingües evalúan el motor semántico.
+La evaluación v2 prepara ocho proyectos de desarrollo y ocho reservados, cada uno con consultas equivalentes en inglés y español. Compara E5, el motor actual, recuperación híbrida sin reordenador y recuperación híbrida con reordenador. Para cada combinación reúne hasta diez resultados, elimina duplicados por proyecto e idioma y oculta motor, puntuación y posición original durante la calificación humana.
 
-La evaluación manual ciega asigna 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Precision@5 y nDCG@5 resumen los primeros cinco resultados que una persona haya calificado. No se informa recall, porque no hay etiquetas de relevancia para todo el catálogo.
+La evaluación manual ciega asigna 0 (no pertinente), 1 (parcialmente pertinente) o 2 (directamente pertinente). Informa Precision@5 directa, Precision@5 amplia, nDCG@5 con el conjunto común de artículos calificados, primer resultado no pertinente, listas vacías, cantidad de resultados y latencia p95. Los resultados faltantes cuentan como posiciones sin relevancia para Precision@5. No se informa recall, porque no hay etiquetas de relevancia para todo el catálogo. Los umbrales se calibrarán únicamente con el conjunto de desarrollo y se verificarán una sola vez en el conjunto reservado.
 
 ## Sesgos, impacto y mitigación
 
@@ -68,7 +70,7 @@ La extracción actual produjo **124.759 registros válidos de OpenAlex**, distri
 
 En el catálogo combinado, **103.734 artículos están en inglés (94,2 %) y 6.410 en español (5,8 %)**. OpenAlex aporta 3.702 artículos en español y SciELO 2.708. Aunque la incorporación de SciELO aumenta la cobertura en español, el inglés sigue predominando. Las categorías de SciELO se mantienen separadas de los 26 campos de OpenAlex y el análisis de sesgos informa la cobertura por fuente. El manifiesto local conserva la semilla, los filtros, los conteos y el hash de los datos para identificar esta extracción aunque el servicio cambie.
 
-El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MPS; **13.590 resúmenes (12,3 %)** superan el límite de 512 tokens y se truncan. El reranker se aplica a la lista corta de candidatos; se descartan puntajes negativos para todas las consultas, sin excepciones temáticas. La evaluación genera perfiles bilingües en seis áreas y compara el recomendador semántico con TF-IDF para consultas inglesas. Las métricas de relevancia dependen de completar la calificación humana a ciegas; la selección del reranker se comprobó además con búsquedas de prueba que incluyen términos ambiguos.
+El índice E5 usa la revisión 614241f622f53c4eeff9890bdc4f31cfecc418b3 sobre MPS; **13.590 resúmenes (12,3 %)** superan el límite de 512 tokens y se truncan. El reranker se aplica a la lista corta de candidatos; se descartan puntajes negativos para todas las consultas, sin excepciones temáticas. Una auditoría estratificada de 100 vectores realizada el 18 de octubre de 2026 obtuvo un coseno mínimo de 0,99999976 frente a una codificación nueva, por lo que no detectó desalineación en esa muestra. La evaluación v2 preparó 1.194 resultados ordenados y 748 artículos únicos pendientes de calificación humana; mientras esas etiquetas estén vacías, no se puede seleccionar ni declarar superior un motor.
 
 La comprobación del 17 de octubre de 2026 incluyó recomendaciones desde tres referencias: pronóstico de radiación solar, aplicaciones móviles para diabetes y sistemas de IA autónomos. Sobre los 110.144 registros, la comparación por artículo tardó aproximadamente entre 0,9 y 1,2 segundos por referencia con los datos ya cargados en el equipo de desarrollo. Por ejemplo, desde un artículo sobre intervención móvil en diabetes se recuperó un ensayo de monitorización de glucosa mediante teléfono móvil. Son comprobaciones de funcionamiento y ejemplos de afinidad; no demuestran una mejora general de Precision@5 o nDCG@5. La evaluación humana de similitud entre artículos debe realizarse por separado de la evaluación de consultas.
 

@@ -4,13 +4,20 @@ flowchart LR
     B --> D[Catálogo local y manifiesto]
     D --> V[Vectores E5 de título y resumen]
     D --> T[Índice TF-IDF en inglés]
+    D --> Y[Índice léxico híbrido multilingüe]
     U[Estudiante] --> E[Descripción y filtros]
     E --> H[Recuperación E5: hasta 500 candidatos]
     V --> H
     H --> I[Cross-encoder y filtro de puntuación]
+    E --> R[Recuperación léxica: hasta 500 candidatos]
+    Y --> R
+    H --> F[Fusión RRF experimental]
+    R --> F
+    F --> J[Cross-encoder y fusión ponderada]
     E --> L[Referencia TF-IDF por coseno]
     T --> L
     I --> M[Streamlit: resultados]
+    J --> M
     L --> M
     M --> P[Selección de un artículo]
     P --> Q[Coseno entre artículos]
