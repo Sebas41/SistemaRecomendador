@@ -164,3 +164,15 @@ def test_hybrid_keeps_semantic_results_when_lexical_query_is_oov(tmp_path, monke
         embeddings=vectors(), model=FakeSemanticModel(), generate_evidence=False,
     )
     assert len(result) == 2
+
+
+def test_diagnostics_record_candidates_and_negative_reranker_ids():
+    class NegativeReranker:
+        def predict(self, pairs, **kwargs):
+            return np.asarray([-1.0] * len(pairs), dtype=np.float32)
+    details = {}
+    result = engine.recommend(small_catalog(), "solar energy forecasting research project", embeddings=vectors(),
+        model=FakeSemanticModel(), reranker=NegativeReranker(), generate_evidence=False, diagnostics=details)
+    assert result.empty
+    assert details["semantic_candidate_ids"]
+    assert details["excluded_negative_ids"] == details["semantic_candidate_ids"]

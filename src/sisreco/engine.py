@@ -452,7 +452,10 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
             pairs = [(query, passage(article)) for _, article in candidates.iterrows()]
             rerank_scores = np.asarray(reranker.predict(pairs, batch_size=32, show_progress_bar=False)).reshape(-1)
             candidates["reranker_score"] = rerank_scores.astype(np.float32)
+            excluded_negative = candidates.loc[candidates["reranker_score"] < MIN_RERANK_SCORE, "id"].tolist()
             candidates = candidates[candidates["reranker_score"] >= MIN_RERANK_SCORE].copy()
+            if diagnostics is not None:
+                diagnostics["excluded_negative_ids"] = excluded_negative
             if candidates.empty:
                 return _empty_results(candidates, semantic=True)
             rerank_order = candidates.sort_values(["reranker_score", "year", "id"], ascending=[False, False, True], kind="stable")
@@ -467,7 +470,6 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
                 candidates["score"] = candidates["reranker_score"]
             if diagnostics is not None:
                 diagnostics.update({"reranked_candidate_ids": rerank_order["id"].tolist(),
-                                    "excluded_negative_ids": [],
                                     "reranker_passage": rerank_passage})
         else:
             candidates["score"] = candidates["retrieval_score"] if engine == "hibrido_sin_rerank" else candidates["semantic_score"]
