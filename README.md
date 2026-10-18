@@ -57,7 +57,7 @@ La preparación usa CUDA cuando está disponible, Apple Metal (MPS) en equipos c
 streamlit run app.py
 ~~~
 
-Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por disciplina, años e idioma y elegir el recomendador semántico o TF-IDF. E5 recupera hasta 500 candidatos por similitud coseno y el cross-encoder multilingüe los reordena; se descartan puntajes negativos para todas las consultas. Este umbral es una heurística, no una garantía de pertinencia. TF-IDF permanece como referencia en inglés y devuelve una lista vacía cuando no hay vocabulario compartido.
+Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por disciplina, años e idioma y elegir el recomendador semántico, el híbrido experimental o TF-IDF. E5 recupera hasta 500 candidatos por similitud coseno y el cross-encoder multilingüe los reordena; se descartan puntajes negativos para todas las consultas. El híbrido añade un índice léxico multilingüe de título, resumen y palabras clave, y fusiona sus posiciones con E5 antes de reordenar. Sigue siendo experimental: no sustituye el motor semántico hasta completar la evaluación humana. TF-IDF permanece como referencia en inglés y devuelve una lista vacía cuando no hay vocabulario compartido.
 
 Cada resultado incluye **Ver artículos similares**. Al seleccionarlo, el artículo se convierte en la referencia: el sistema compara su vector de título y resumen con los demás vectores del catálogo, conserva los filtros de la búsqueda inicial y excluye el artículo elegido y sus duplicados por DOI o título. Puedes seleccionar otra lectura, volver a la lista anterior o regresar a la búsqueda inicial. Las últimas diez listas se guardan solo en la sesión de Streamlit; no se crea una cuenta ni un historial persistente.
 
@@ -93,6 +93,24 @@ Las métricas quedan en artifacts/evaluation_metrics.csv. Las tablas de cobertur
 
 La comparación de motores usa consultas inglesas y los mismos candidatos. Las consultas bilingües evalúan el motor semántico. Precision@5 y nDCG@5 dependen de juicios humanos. No se calcula recall porque no existen etiquetas para todos los artículos del catálogo.
 
+La evaluación de pertinencia v2 separa ocho proyectos de desarrollo y ocho reservados, en español e inglés. Compara E5, el método actual y las variantes híbridas; oculta el motor, puntuación y posición original a quien califica. No sobrescribe la evaluación anterior:
+
+~~~bash
+python scripts/prepare_evaluation_v2.py
+python scripts/score_evaluation_v2.py
+python scripts/diagnose_retrieval.py --sample-size 100
+python scripts/compare_rankings.py --configuration hybrid_50_text_0.50
+python scripts/audit_similar_articles.py
+python scripts/calibrate_threshold.py
+python scripts/score_similar_articles.py
+~~~
+
+`prepare_evaluation_v2.py` genera `evaluation_v2_ratings.csv`. Completa `relevance` con 0, 1 o 2 antes de ejecutar el cálculo de métricas. `score_evaluation_v2.py` reporta Precision@5 directa y amplia, nDCG@5 con el conjunto común de artículos valorados, primer resultado no pertinente, listas vacías, cantidad de resultados y latencia p95. El diagnóstico verifica una muestra estratificada de 100 vectores y conserva la traza de recuperación y reordenamiento. `compare_rankings.py` permite probar listas de 50, 100 o 500 candidatos, ambos formatos de pasaje y pesos de 0,25, 0,50 y 0,75 sin cambiar la interfaz.
+
+`audit_similar_articles.py` prepara una revisión separada de cinco artículos similares para ocho referencias. Sus valoraciones no se mezclan con las métricas de consultas textuales.
+
+`calibrate_threshold.py` solo usa valoraciones humanas del conjunto de desarrollo y selecciona cortes de la puntuación del reordenador por Precision@5 directa, nDCG@5 y menor proporción de primeros resultados irrelevantes. El conjunto reservado no se usa para ajustar esos parámetros. `score_similar_articles.py` calcula las métricas de las referencias seleccionadas por separado.
+
 Para ejecutar las pruebas automatizadas:
 
 ~~~bash
@@ -111,6 +129,7 @@ El notebook notebooks/01_recomendador_explicado.ipynb presenta los datos, la rep
 - Cuando falta el idioma en OpenAlex, se infiere del resumen y se conserva esa información en el catálogo.
 - E5 procesa un máximo de 512 tokens por entrada; los textos largos se truncan.
 - Un artículo nuevo requiere limpiar el catálogo y regenerar ambos índices.
+- Para construir solo el índice léxico híbrido tras actualizar el catálogo, ejecuta `python scripts/build_index.py --hybrid-only`; no vuelve a codificar los vectores E5.
 - La navegación conserva temporalmente la consulta, los filtros y hasta diez listas en la sesión; no guarda perfiles ni preferencias entre sesiones.
 - La similitud entre artículos puede conducir a temas vecinos o repetir perspectivas. La pertinencia debe evaluarse manualmente.
 - No se aplican diccionarios de temas específicos: todas las consultas siguen el mismo criterio. La ausencia de una frase literal no demuestra ausencia de literatura relevante.

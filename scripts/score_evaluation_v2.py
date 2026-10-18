@@ -11,6 +11,7 @@ from sisreco.settings import ARTIFACTS_DIR
 
 def main():
     candidates = pd.read_csv(ARTIFACTS_DIR / "evaluation_v2_candidates.csv")
+    runs = pd.read_csv(ARTIFACTS_DIR / "evaluation_v2_runs.csv")
     ratings = pd.read_csv(ARTIFACTS_DIR / "evaluation_v2_ratings.csv", keep_default_na=False)
     if (ratings["relevance"].astype(str).str.strip() == "").any():
         raise SystemExit("Completa relevance con 0, 1 o 2 antes de calcular métricas.")
@@ -24,18 +25,22 @@ def main():
         raise SystemExit("Faltan juicios para resultados presentados por un motor.")
     frame["engine"] = frame["anonymous_engine"].map(key)
     rows = []
+    runs["engine"] = runs["anonymous_engine"].map(key)
     group_columns = ["split", "engine", "query_language"]
-    for group_key, group in frame.groupby(group_columns):
+    for group_key, group in runs.groupby(group_columns):
         per_query = []
-        for (_, profile_id, language), ranked in group.groupby(["split", "profile_id", "query_language"]):
+        for _, run in group.iterrows():
+            profile_id, language = run["profile_id"], run["query_language"]
+            ranked = frame[(frame["split"] == run["split"]) & (frame["profile_id"] == profile_id) &
+                           (frame["query_language"] == language) & (frame["engine"] == run["engine"])]
             all_labels = frame[(frame["profile_id"] == profile_id) & (frame["query_language"] == language)]["relevance"].tolist()
             labels = ranked.sort_values("rank")["relevance"].astype(int).tolist()
             per_query.append({"precision_direct": precision_at_k(labels, 5, threshold=2),
                               "precision_broad": precision_at_k(labels, 5, threshold=1),
                               "ndcg": ndcg_at_k(labels, 5, ideal_relevances=all_labels),
                               "first_irrelevant": float(bool(labels) and labels[0] == 0),
-                              "empty": 0.0, "count": len(labels),
-                              "latency": ranked["latency_seconds"].iloc[0]})
+                              "empty": float(run["result_count"] == 0), "count": int(run["result_count"]),
+                              "latency": run["latency_seconds"]})
         values = pd.DataFrame(per_query)
         rows.append(dict(zip(group_columns, group_key)) | {
             "queries": len(values), "precision_at_5_direct": values.precision_direct.mean(),
