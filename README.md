@@ -57,7 +57,22 @@ La preparación usa CUDA cuando está disponible, Apple Metal (MPS) en equipos c
 streamlit run app.py
 ~~~
 
-Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por área, años e idioma y elegir el recomendador semántico o TF-IDF. El recomendador semántico recupera los 500 candidatos más cercanos con multilingual-e5-small y los reordena con `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`, un modelo multilingüe que compara la consulta con cada artículo. En consultas que incluyen los conceptos reconocidos de agentes de IA y arquitectura empresarial, también comprueba que los artículos cubran ambos. Si el catálogo no contiene esa combinación, muestra coincidencias parciales por separado y las etiqueta; así evita presentarlas como respuestas directas. Esta comprobación cubre esas dos familias de conceptos, no cualquier combinación temática. En búsquedas generales, se descartan candidatos con puntaje de reranking menor que cero y la app pide ajustar la búsqueda si no quedan resultados. TF-IDF se mantiene como referencia léxica para consultas en inglés. Los resultados muestran título, autores, año, resumen, enlace y puntaje de relevancia. El puntaje ordena resultados; no es una probabilidad ni una valoración de calidad.
+Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por disciplina, años e idioma y elegir el recomendador semántico o TF-IDF. E5 recupera hasta 500 candidatos por similitud coseno y el cross-encoder multilingüe los reordena; se descartan puntajes negativos para todas las consultas. Este umbral es una heurística, no una garantía de pertinencia. TF-IDF permanece como referencia en inglés y devuelve una lista vacía cuando no hay vocabulario compartido.
+
+Cada resultado incluye **Ver artículos similares**. Al seleccionarlo, el artículo se convierte en la referencia: el sistema compara su vector de título y resumen con los demás vectores del catálogo, conserva los filtros de la búsqueda inicial y excluye el artículo elegido y sus duplicados por DOI o título. Puedes seleccionar otra lectura, volver a la lista anterior o regresar a la búsqueda inicial. Las últimas diez listas se guardan solo en la sesión de Streamlit; no se crea una cuenta ni un historial persistente.
+
+Los resultados permanecen visibles mientras navegas. Los cambios en el formulario se aplican al pulsar Buscar artículos. El modo de artículos similares reutiliza los vectores existentes, sin descargar modelos ni volver a codificar el catálogo. No necesitas regenerar los índices para activar esta función si ya estaban preparados. La interfaz carga los modelos de búsqueda exclusivamente desde la caché local; si faltan, indica cómo prepararlos.
+
+Las tarjetas muestran autores, año, fuente, resumen, enlace y puntuación. La búsqueda semántica muestra el puntaje del reordenador; Ver similares muestra coseno entre artículos. Son escalas distintas: ninguna es una probabilidad ni una valoración de calidad. La exploración se basa en contenido y en la selección explícita de un artículo, no en valoraciones de otros usuarios.
+
+Para guardar ejemplos reproducibles sobre el catálogo instalado, sin modificar la evaluación manual:
+
+~~~bash
+python scripts/check_recommendations.py
+python scripts/check_recommendations.py --article-id https://openalex.org/W3131117291
+~~~
+
+El segundo comando explora directamente un artículo del catálogo y no carga modelos. El archivo local `artifacts/recommendation_examples.json` registra títulos, identificadores, puntuaciones, tiempos y hash del catálogo. Son ejemplos de funcionamiento, no métricas de relevancia.
 
 ## Evaluación manual y sesgos
 
@@ -94,4 +109,6 @@ El notebook notebooks/01_recomendador_explicado.ipynb presenta los datos, la rep
 - Cuando falta el idioma en OpenAlex, se infiere del resumen y se conserva esa información en el catálogo.
 - E5 procesa un máximo de 512 tokens por entrada; los textos largos se truncan.
 - Un artículo nuevo requiere limpiar el catálogo y regenerar ambos índices.
-- El prototipo no conserva consultas ni perfiles personales.
+- La navegación conserva temporalmente la consulta, los filtros y hasta diez listas en la sesión; no guarda perfiles ni preferencias entre sesiones.
+- La similitud entre artículos puede conducir a temas vecinos o repetir perspectivas. La pertinencia debe evaluarse manualmente.
+- No se aplican diccionarios de temas específicos: todas las consultas siguen el mismo criterio. La ausencia de una frase literal no demuestra ausencia de literatura relevante.
