@@ -76,6 +76,8 @@ El segundo comando explora directamente un artículo del catálogo y no carga mo
 
 ## Evaluación manual y sesgos
 
+La [auditoría exploratoria del 18 de octubre de 2026](docs/pruebas_pertinencia_2026-10-18.md) revisa diez descripciones de proyectos y documenta aciertos y errores de pertinencia. Incluye las consultas, los artículos, las razones de cada valoración y cómo repetir las pruebas. Sus valoraciones son del asistente de IA y no sustituyen los juicios humanos de la evaluación académica.
+
 ~~~bash
 python scripts/prepare_evaluation.py
 ~~~

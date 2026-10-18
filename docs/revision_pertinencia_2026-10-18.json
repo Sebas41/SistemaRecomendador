@@ -1,0 +1,754 @@
+{
+  "date": "2026-10-18",
+  "reviewer": "Codex (asistente de IA)",
+  "review_type": "Exploratoria, con títulos y resúmenes; no evaluación humana ni revisión del texto completo",
+  "code_commit": "15c5f45991bac58dcd10e40940c8339f7ee996d7",
+  "catalog_sha256": "845853d5eb86ff6d4d6845743f3e2dd4ecc2cde0f9e1003e1be96224e86cc11c",
+  "profiles": [
+    {
+      "name": "arquitectura_empresarial",
+      "description": "Diseñar un sistema de agentes de inteligencia artificial que apoye la arquitectura empresarial, identificando dependencias entre procesos de negocio, aplicaciones y capacidades organizacionales para proponer mejoras alineadas con la estrategia de la empresa.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W4409526434",
+          "title": "Design and Implementation of Intelligent Decision Support System in Modernization of Social Governance",
+          "url": "https://doi.org/10.2478/amns-2025-0836",
+          "score": 4.856415271759033,
+          "relevance": 0,
+          "reason": "Trata apoyo a decisiones en gobernanza social; no desarrolla agentes para arquitectura empresarial."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4410618283",
+          "title": "AI-powered SAP: Transforming enterprise intelligence for the future",
+          "url": "https://doi.org/10.30574/wjaets.2025.15.2.0612",
+          "score": 4.044707775115967,
+          "relevance": 1,
+          "reason": "Aporta contexto sobre IA e integración en SAP, pero no analiza agentes ni dependencias entre capacidades, procesos y aplicaciones."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W7139970333",
+          "title": "Cloud-Native Workforce Engineering : A DevOps and CI/CD Strategy for Rapid Deployment of AI Models Across Distributed HCM Systems",
+          "url": "https://doi.org/10.32628/cseit2281224",
+          "score": 3.97278094291687,
+          "relevance": 1,
+          "reason": "Describe despliegue de modelos en sistemas empresariales de recursos humanos; sirve como contexto técnico, no como solución al objetivo de agentes y arquitectura empresarial."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W7162313954",
+          "title": "An AI-Driven Architecture for Cross-Domain Data Management in Enterprise Systems",
+          "url": "https://doi.org/10.63282/3050-922x.ijeret-v5i2p118",
+          "score": 3.8415849208831787,
+          "relevance": 1,
+          "reason": "Aborda arquitectura de datos, interoperabilidad y gobierno empresarial con IA; no demuestra el enfoque de agentes y capacidades organizacionales solicitado."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4417164737",
+          "title": "Federated AI for Multi-Enterprise Supply Chain Collaboration",
+          "url": "https://doi.org/10.32996/jcsts.2025.7.12.34",
+          "score": 3.6456246376037598,
+          "relevance": 1,
+          "reason": "Ofrece arquitectura federada entre empresas para cadenas de suministro, con un problema y mecanismo distintos de los agentes propuestos."
+        }
+      ]
+    },
+    {
+      "name": "energia_solar",
+      "description": "Desarrollar un modelo de aprendizaje automático para pronosticar la generación de energía de paneles solares a partir de datos meteorológicos e irradiancia, y comparar su precisión con modelos estadísticos tradicionales.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W7116704433",
+          "title": "Evaluation of Machine Learning Models in Solar Radiation Prediction for Photovoltaic System Design",
+          "url": "https://www.e3s-conferences.org/10.1051/e3sconf/202568000010/pdf",
+          "score": 5.556854724884033,
+          "relevance": 2,
+          "reason": "Compara modelos estadísticos y de aprendizaje automático para radiación solar y diseño fotovoltaico; aporta directamente a la etapa de pronóstico."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4400604840",
+          "title": "The prediction of the usual solar irradiation in the Sahel using the artificial neural networks (case study: 50 MW power plant in Nouakchott)",
+          "url": "http://dx.doi.org/10.11591/ijpeds.v15.i3.pp1739-1748",
+          "score": 3.8559682369232178,
+          "relevance": 2,
+          "reason": "Predice irradiación con redes neuronales y describe su conversión a energía generada en una planta solar."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W3178756396",
+          "title": "Automated Deep CNN-LSTM Architecture Design for Solar Irradiance Forecasting",
+          "url": "https://doi.org/10.1109/tsmc.2021.3093519",
+          "score": 3.667245626449585,
+          "relevance": 2,
+          "reason": "Pronostica irradiancia mediante CNN-LSTM y compara modelos; es un antecedente directo del componente predictivo."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W2901842413",
+          "title": "Diagnostic method of solar thermal system based on the short time on-line measurements",
+          "url": "https://doi.org/10.1016/j.applthermaleng.2018.11.048",
+          "score": 3.453672170639038,
+          "relevance": 0,
+          "reason": "Diagnostica parámetros de colectores térmicos; no aborda el pronóstico de generación fotovoltaica mediante aprendizaje automático."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4402070284",
+          "title": "Supervised learning based iterative learning control platform for optimal HVAC start-stop in a real building context",
+          "url": "https://doi.org/10.1016/j.csite.2024.105055",
+          "score": 3.2558631896972656,
+          "relevance": 0,
+          "reason": "Optimiza el encendido y apagado de climatización de edificios; comparte vocabulario energético, pero cambia el problema central."
+        }
+      ]
+    },
+    {
+      "name": "diabetes",
+      "description": "Desarrollar y evaluar una aplicación móvil para apoyar el autocuidado de adultos con diabetes tipo 2, mediante registro de glucosa, recordatorios de medicación y seguimiento de la adherencia al tratamiento.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W3003081363",
+          "title": "Effect of a Mobile Phone–Based Glucose-Monitoring and Feedback System for Type 2 Diabetes Management in Multiple Primary Care Clinic Settings: Cluster Randomized Controlled Trial",
+          "url": "https://doi.org/10.2196/16266",
+          "score": 5.601912975311279,
+          "relevance": 2,
+          "reason": "Evalúa una aplicación de monitorización de glucosa y retroalimentación en diabetes tipo 2; incluye adherencia y evaluación clínica."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4415489865",
+          "title": "Developing a Culturally Adapted Digital Health Application for Older Hispanic Adults With Type 2 Diabetes: Protocol for a Qualitative and Pilot Study",
+          "url": "https://doi.org/10.2196/76294",
+          "score": 4.792982578277588,
+          "relevance": 2,
+          "reason": "Propone y prepara la evaluación de una aplicación para adherencia en adultos con diabetes tipo 2; es un protocolo, no evidencia de eficacia ya demostrada."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W7216244290",
+          "title": "Smart Chat TB: Aplikasi Mobile untuk Deteksi Dini dan Monitoring Pengobatan Tuberkulosis",
+          "url": "https://journal.publinesia.com/index.php/sistematik/article/view/192",
+          "score": 3.900465965270996,
+          "relevance": 1,
+          "reason": "Comparte aplicación móvil, autocuidado y recordatorios, pero aborda tuberculosis. Solo aporta un antecedente tecnológico transferible."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W4393716598",
+          "title": "Evaluating the Usability of an mHealth App for Empowering Cancer Survivors With Disabilities: Heuristic Evaluation and Usability Testing",
+          "url": "https://doi.org/10.2196/51522",
+          "score": 3.442776918411255,
+          "relevance": 1,
+          "reason": "Aporta evaluación de usabilidad de una aplicación de autocuidado; la población son supervivientes de cáncer, no pacientes con diabetes."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4411364528",
+          "title": "Evaluating the Impact of mySugr® Mobile Health Application on Glycemic Control in People with Diabetes Mellitus in India: A Real-World Data Analysis",
+          "url": "https://doi.org/10.1007/s13300-025-01768-x",
+          "score": 2.9136970043182373,
+          "relevance": 2,
+          "reason": "Evalúa una aplicación de registro de glucosa y autocuidado en diabetes; el resumen no restringe la población a tipo 2 ni demuestra todas las funciones solicitadas."
+        }
+      ]
+    },
+    {
+      "name": "educacion",
+      "description": "Evaluar el efecto de la gamificación en la comprensión lectora de estudiantes de educación primaria, comparando una intervención con actividades digitales y recompensas con clases de lectura tradicionales.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W4409339975",
+          "title": "The effectiveness of gamified learning environments in promoting grammar mastery in Jordanian secondary school EFL learners",
+          "url": "https://doi.org/10.53894/ijirss.v8i2.6013",
+          "score": 5.103079319000244,
+          "relevance": 1,
+          "reason": "Evalúa gamificación con grupo de control, pero mide gramática en secundaria, no comprensión lectora en primaria."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W3045102636",
+          "title": "Using Interactive E-Book User Log Variables to Track Reading Processes and Predict Digital Learning Outcomes",
+          "url": "https://doi.org/10.1177/1534508420941935",
+          "score": 4.696189880371094,
+          "relevance": 1,
+          "reason": "Estudia lectura digital en primaria y sus resultados, pero no la intervención de gamificación comparada con clases tradicionales."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4390398208",
+          "title": "Effectiveness of a digital literacy program in High School Basic education students [Eficacia de un programa de alfabetización digital en estudiantes de Educación Básica de Secundaria]",
+          "url": "https://doi.org/10.25115/ecp.v16i34.9516",
+          "score": 3.723104953765869,
+          "relevance": 0,
+          "reason": "Evalúa alfabetización digital en secundaria; cambia tanto el aprendizaje objetivo como la intervención."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W4312919142",
+          "title": "Gamificación en Medicina de Urgencia",
+          "url": "https://doi.org/10.6018/edumed.531501",
+          "score": 3.289870023727417,
+          "relevance": 1,
+          "reason": "Puede orientar el diseño comparativo de una intervención gamificada, pero estudia medicina de urgencias en universitarios, no lectura infantil."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4362591347",
+          "title": "How can a foundation be outlined for a successful serious game to increase reading engagement",
+          "url": "https://doi.org/10.17083/ijsg.v10i1.578",
+          "score": 3.2328150272369385,
+          "relevance": 1,
+          "reason": "Combina juego y lectura con un grupo de control, pero mide participación en secundaria; no demuestra comprensión lectora en primaria."
+        }
+      ]
+    },
+    {
+      "name": "agua",
+      "description": "Diseñar un sistema de monitoreo de calidad del agua en ríos mediante sensores de bajo costo e Internet de las cosas, midiendo pH, turbidez y temperatura para detectar cambios y generar alertas tempranas de contaminación.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W7115166932",
+          "title": "Water Quality Monitoring Kit",
+          "url": "https://doi.org/10.22214/ijraset.2025.76306",
+          "score": 5.296742916107178,
+          "relevance": 2,
+          "reason": "Revisa sensores, arquitecturas y problemas de implementación de monitoreo de calidad de agua con IoT; aporta directamente al diseño, aunque no demuestra el sistema específico de río y bajo costo."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W7217954570",
+          "title": "Iot-Based Recirculating Systems: Advancing Climate-Resilient Aquaculture",
+          "url": "https://bpasjournals.com/library-science/index.php/journal/article/view/1224",
+          "score": 5.281121730804443,
+          "relevance": 1,
+          "reason": "Usa IoT para parámetros de calidad del agua, pero en acuicultura recirculante, con condiciones distintas a las de un río."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4324103089",
+          "title": "Optimization Method of River Water Pollution Prevention and Early Warning System Supporting Spectrum Classification and 3D Remote Sensing Technology",
+          "url": "http://dx.doi.org/10.38007/wppcp.2023.040102",
+          "score": 5.1442389488220215,
+          "relevance": 1,
+          "reason": "Aborda contaminación de ríos y alertas, pero mediante teledetección y clasificación espectral, no el sistema de sensores de bajo costo propuesto."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W2412146251",
+          "title": "DEPLOYMENT APPROACH TO NODES OF THE IOT FOR MONITORING SYSTEMS IN PORTS",
+          "url": "https://www.airitilibrary.com/Publication/Index?FirstID=10232796-201602-201603300006-201603300006-39-46",
+          "score": 4.845804214477539,
+          "relevance": 0,
+          "reason": "Optimiza despliegue de nodos IoT en puertos; el resumen no establece un vínculo con calidad del agua ni medición de los parámetros requeridos."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4412361570",
+          "title": "A three stage attention enabled stacked deep CNN-BiLSTM (ASDCBNet) model for end-to-end monitoring of wastewater treatment plant",
+          "url": "https://doi.org/10.1007/s13201-025-02575-2",
+          "score": 4.312902450561523,
+          "relevance": 1,
+          "reason": "Monitorea sensores y calidad del agua con aprendizaje profundo en plantas de tratamiento; el contexto y la arquitectura difieren del sistema de río."
+        }
+      ]
+    },
+    {
+      "name": "credito",
+      "description": "Comparar modelos de aprendizaje automático para predecir el incumplimiento de créditos en pequeñas empresas, utilizando indicadores financieros y técnicas de explicabilidad para interpretar los factores asociados al riesgo.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W4416063149",
+          "title": "Explainable AI in Credit Models: Balancing Predictive Power with Transparency",
+          "url": "https://doi.org/10.52783/jisem.v10i61s.13462",
+          "score": 3.0652620792388916,
+          "relevance": 2,
+          "reason": "Aborda modelos de crédito e interpretabilidad con SHAP, LIME y contrafactuales; aporta directamente al componente explicable, aunque no valida una comparación específica en pequeñas empresas."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4386465591",
+          "title": "Machine learning and financial big data control using IoT",
+          "url": "https://doi.org/10.3233/idt-230156",
+          "score": 2.534874439239502,
+          "relevance": 1,
+          "reason": "Compara modelos de riesgo financiero empresarial, sin establecer que prediga impago de créditos ni que estudie pequeñas empresas."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4416465196",
+          "title": "Predictive power of ensemble learning in audit qualifications: insights from Indian firms",
+          "url": "https://doi.org/10.1504/ijpmb.2025.149981",
+          "score": 1.7549800872802734,
+          "relevance": 0,
+          "reason": "Predice opiniones de auditoría; no incumplimiento crediticio."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W4414828427",
+          "title": "A Comparative Study of Machine Learning Algorithms for Predicting Housing Prices in Chinese Cities",
+          "url": "https://doi.org/10.71465/fias374",
+          "score": 1.663482904434204,
+          "relevance": 0,
+          "reason": "Predice precios de vivienda; el objetivo es distinto del riesgo de impago."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4386805170",
+          "title": "A Comparative Study of Feature Selection Techniques in Machine Learning for Predicting Stock Market Trends",
+          "url": "https://doi.org/10.47738/jads.v4i3.99",
+          "score": 1.650783896446228,
+          "relevance": 0,
+          "reason": "Selecciona variables para predicción bursátil; no aborda préstamos o incumplimiento."
+        }
+      ]
+    },
+    {
+      "name": "lenguas",
+      "description": "Crear un archivo digital participativo para documentar y preservar una lengua indígena en riesgo, mediante grabaciones de relatos orales, transcripciones y colaboración con hablantes de la comunidad.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W7118813419",
+          "title": "DIGITAL PRESERVATION AND DOCUMENTATION OF INDIGENOUS KNOWLEDGE IN AFRICA: A DATA-DRIVEN APPROACH",
+          "url": "https://doi.org/10.69778/3007-7184/2025/2.1/a2",
+          "score": 3.2144362926483154,
+          "relevance": 1,
+          "reason": "Aporta preservación digital, participación y propiedad comunitaria de conocimiento indígena, pero no desarrolla documentación de una lengua en riesgo."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W7154867811",
+          "title": "La lucha palestina en el muro: Archivando el arte callejero propalestina en Santiago, Chile",
+          "url": "https://digitalcollections.sit.edu/cir/4",
+          "score": 0.9281708598136902,
+          "relevance": 1,
+          "reason": "Describe construcción de un archivo digital mediante trabajo de campo y entrevistas; sirve como referencia de archivística, pero preserva murales y no lengua oral."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4323542873",
+          "title": "Transcultural language, native Chilean peoples and a new AI-based artistic-cultural expression",
+          "url": "https://doi.org/10.37467/revhuman.v19.4932",
+          "score": 0.8636623024940491,
+          "relevance": 0,
+          "reason": "Procesa retratos de pueblos originarios para crear piezas artísticas; la palabra lenguaje no corresponde a documentación lingüística en el resumen."
+        },
+        {
+          "rank": 4,
+          "article_id": "SCIELO:sza:S2223-03862023000200004",
+          "title": "Building an archive for 'future pasts': Undergraduates document their local Covid-19 'moment' in World History",
+          "url": "https://www.scielo.org.za/scielo.php?script=sci_arttext&pid=S2223-03862023000200004&tlng=en",
+          "score": 0.6354274749755859,
+          "relevance": 1,
+          "reason": "Describe un archivo participativo con Omeka y aportes en lenguas locales; su finalidad es documentar la pandemia, no preservar una lengua indígena."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4413171136",
+          "title": "Dialect-Mandarin bidirectional translation based on Transformer",
+          "url": "https://doi.org/10.54254/2977-3903/2025.25994",
+          "score": 0.5294507145881653,
+          "relevance": 1,
+          "reason": "Construye un corpus e incluye entrevistas comunitarias para traducción cantonés-mandarín; aporta un método relacionado, pero no un archivo participativo de relatos en una lengua indígena en riesgo."
+        }
+      ]
+    },
+    {
+      "name": "cultivos",
+      "description": "Desarrollar un sistema de visión por computador para detectar enfermedades en hojas de tomate a partir de fotografías tomadas con teléfonos móviles, utilizando redes neuronales convolucionales y evaluando su desempeño en condiciones de campo.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W4408118937",
+          "title": "Classification of Poultry Birds Based on Health State Using Convolutional Neural Network",
+          "url": "https://doi.org/10.4314/aujst.v5i1.12",
+          "score": 3.9971635341644287,
+          "relevance": 0,
+          "reason": "Clasifica enfermedades en aves; coincidir en CNN e imágenes no lo convierte en antecedente específico de hojas de tomate."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4392055931",
+          "title": "Image‐Feature Based Deep Learning Model for Plant Leaf Disease Detection",
+          "url": "https://doi.org/10.1002/masy.202200216",
+          "score": 3.7242915630340576,
+          "relevance": 1,
+          "reason": "Detecta enfermedades en hojas y menciona teléfonos, pero el resumen describe SVM y no identifica tomate; el título no basta para atribuirle el método requerido."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4383052158",
+          "title": "DETECTION OF PLANT LEAVE DISEASE USING HYBRID TECHNIQUES",
+          "url": "https://zenodo.org/record/8112700",
+          "score": 3.6477036476135254,
+          "relevance": 2,
+          "reason": "Incluye hojas de tomate, características extraídas con CNN y clasificación de enfermedades. No demuestra validación en campo o con teléfonos."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W4386307387",
+          "title": "Utilizing Deep Convolutional Neural Networks for Multi-Classification of Plant Diseases from Image Data",
+          "url": "https://doi.org/10.18280/ts.400416",
+          "score": 2.8480429649353027,
+          "relevance": 2,
+          "reason": "Usa CNN e imágenes de tomate de PlantVillage para clasificar enfermedades; es un antecedente directo, con la limitación de evaluación en dataset."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W4412528154",
+          "title": "Building a fish disease detection application based on Smart Fishery with Image Processing and Deep Learning",
+          "url": "https://doi.org/10.47709/brilliance.v5i1.5719",
+          "score": 2.3124072551727295,
+          "relevance": 0,
+          "reason": "Detecta enfermedades en peces con CNN; cambia el organismo y el objeto de estudio."
+        }
+      ]
+    },
+    {
+      "name": "arquitectura_empresarial_en",
+      "description": "Design an artificial intelligence agent system to support enterprise architecture by identifying dependencies between business processes, applications and organizational capabilities, and proposing improvements aligned with the company's strategy.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W4410618283",
+          "title": "AI-powered SAP: Transforming enterprise intelligence for the future",
+          "url": "https://doi.org/10.30574/wjaets.2025.15.2.0612",
+          "score": 2.8323493003845215,
+          "relevance": 1,
+          "reason": "Contexto de IA en SAP, sin resolver agentes y dependencias de arquitectura empresarial."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4409526434",
+          "title": "Design and Implementation of Intelligent Decision Support System in Modernization of Social Governance",
+          "url": "https://doi.org/10.2478/amns-2025-0836",
+          "score": 2.490405321121216,
+          "relevance": 0,
+          "reason": "Apoyo a decisiones en gobernanza social, no agentes para arquitectura empresarial."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4407853328",
+          "title": "Inteligencia artificial en la mejora del talento humano y gestión del conocimiento en organizaciones: una revisión sistemática en Scopus",
+          "url": "https://doi.org/10.51252/rcsi.v5i1.889",
+          "score": 0.7981908917427063,
+          "relevance": 1,
+          "reason": "Revisa IA en talento humano y conocimiento organizacional; aporta contexto de negocio, sin el enfoque de agentes y arquitectura propuesto."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W7139970333",
+          "title": "Cloud-Native Workforce Engineering : A DevOps and CI/CD Strategy for Rapid Deployment of AI Models Across Distributed HCM Systems",
+          "url": "https://doi.org/10.32628/cseit2281224",
+          "score": 0.7164240479469299,
+          "relevance": 1,
+          "reason": "Despliegue de modelos de IA en recursos humanos; no el problema central de agentes y arquitectura empresarial."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W7162313954",
+          "title": "An AI-Driven Architecture for Cross-Domain Data Management in Enterprise Systems",
+          "url": "https://doi.org/10.63282/3050-922x.ijeret-v5i2p118",
+          "score": 0.6819117665290833,
+          "relevance": 1,
+          "reason": "Arquitectura e interoperabilidad de datos empresariales; falta el enfoque solicitado de agentes y capacidades."
+        }
+      ]
+    },
+    {
+      "name": "energia_solar_en",
+      "description": "Develop a machine learning model to forecast solar panel energy generation from weather and irradiance data, and compare its accuracy with traditional statistical models.",
+      "results": [
+        {
+          "rank": 1,
+          "article_id": "https://openalex.org/W7116704433",
+          "title": "Evaluation of Machine Learning Models in Solar Radiation Prediction for Photovoltaic System Design",
+          "url": "https://www.e3s-conferences.org/10.1051/e3sconf/202568000010/pdf",
+          "score": 7.516576290130615,
+          "relevance": 2,
+          "reason": "Compara modelos de pronóstico de radiación solar para sistemas fotovoltaicos."
+        },
+        {
+          "rank": 2,
+          "article_id": "https://openalex.org/W4384525853",
+          "title": "Construction and Research of Ultra-Short Term Prediction Model of Solar Short Wave Irradiance Suitable for Qinghai–Tibet Plateau",
+          "url": "https://doi.org/10.3390/atmos14071150",
+          "score": 1.7507133483886719,
+          "relevance": 2,
+          "reason": "Compara ARIMA, Random Forest y LSTM para pronóstico de irradiancia, directamente útil al objetivo."
+        },
+        {
+          "rank": 3,
+          "article_id": "https://openalex.org/W4392505325",
+          "title": "CME Arrival Modeling with Machine Learning",
+          "url": "https://doi.org/10.3847/1538-4357/ad1cee",
+          "score": 1.6571266651153564,
+          "relevance": 0,
+          "reason": "Predice llegada de eyecciones de masa coronal a la Tierra; confunde fenómenos solares con generación fotovoltaica."
+        },
+        {
+          "rank": 4,
+          "article_id": "https://openalex.org/W4400604840",
+          "title": "The prediction of the usual solar irradiation in the Sahel using the artificial neural networks (case study: 50 MW power plant in Nouakchott)",
+          "url": "http://dx.doi.org/10.11591/ijpeds.v15.i3.pp1739-1748",
+          "score": 1.4105350971221924,
+          "relevance": 2,
+          "reason": "Predice irradiación con redes neuronales y la conecta con energía generada."
+        },
+        {
+          "rank": 5,
+          "article_id": "https://openalex.org/W7116890632",
+          "title": "Hybrid XGBoost-BiLSTM Net-Load Forecasting Framework With Holographic Integration for High-PV IoT Environments",
+          "url": "https://doi.org/10.1109/tce.2025.3647579",
+          "score": 1.1262717247009277,
+          "relevance": 1,
+          "reason": "Predice carga neta usando generación solar y clima; es un objetivo relacionado, pero no idéntico a generación de paneles."
+        }
+      ]
+    }
+  ],
+  "stage_diagnostics": [
+    {
+      "name": "energia_solar",
+      "before": [
+        {
+          "id": "https://openalex.org/W4400604840",
+          "title": "The prediction of the usual solar irradiation in the Sahel using the artificial neural networks (case study: 50 MW power plant in Nouakchott)",
+          "url": "http://dx.doi.org/10.11591/ijpeds.v15.i3.pp1739-1748"
+        },
+        {
+          "id": "https://openalex.org/W3025900241",
+          "title": "Exploring the Potentials of Artificial Neural Network Trained with Differential Evolution for Estimating Global Solar Radiation",
+          "url": "https://doi.org/10.3390/en13102488"
+        },
+        {
+          "id": "https://openalex.org/W2940533931",
+          "title": "Diseño e implementación de un sistema de gestión portátil de energía fotovoltaica para una smart grid",
+          "url": "https://repository.udistrital.edu.co/handle/11349/14796"
+        },
+        {
+          "id": "SCIELO:ven:S0798-02642017000200002",
+          "title": "Notas técnicas: análisis de datos bajo condiciones de repetibilidad",
+          "url": "https://www.scielo.org.ve/scielo.php?script=sci_arttext&pid=S0798-02642017000200002&tlng=es"
+        },
+        {
+          "id": "https://openalex.org/W2924762979",
+          "title": "Study of the uncertainties of mediterranean sea climate monitoring and projections",
+          "url": "https://dialnet.unirioja.es/servlet/tesis?codigo=214836"
+        }
+      ],
+      "after": [
+        {
+          "id": "https://openalex.org/W7116704433",
+          "title": "Evaluation of Machine Learning Models in Solar Radiation Prediction for Photovoltaic System Design",
+          "e5_rank": 14,
+          "reranker_rank": 1,
+          "score": 5.556854724884033
+        },
+        {
+          "id": "https://openalex.org/W4400604840",
+          "title": "The prediction of the usual solar irradiation in the Sahel using the artificial neural networks (case study: 50 MW power plant in Nouakchott)",
+          "e5_rank": 1,
+          "reranker_rank": 2,
+          "score": 3.8559682369232178
+        },
+        {
+          "id": "https://openalex.org/W3178756396",
+          "title": "Automated Deep CNN-LSTM Architecture Design for Solar Irradiance Forecasting",
+          "e5_rank": 44,
+          "reranker_rank": 3,
+          "score": 3.667245626449585
+        },
+        {
+          "id": "https://openalex.org/W2901842413",
+          "title": "Diagnostic method of solar thermal system based on the short time on-line measurements",
+          "e5_rank": 263,
+          "reranker_rank": 4,
+          "score": 3.453672170639038
+        },
+        {
+          "id": "https://openalex.org/W4402070284",
+          "title": "Supervised learning based iterative learning control platform for optimal HVAC start-stop in a real building context",
+          "e5_rank": 422,
+          "reranker_rank": 5,
+          "score": 3.2558631896972656
+        }
+      ]
+    },
+    {
+      "name": "credito",
+      "before": [
+        {
+          "id": "https://openalex.org/W4383499126",
+          "title": "Análisis del Riesgo Financiero y su Efecto en el Crecimiento Empresarial de las Pymes De Ambato",
+          "url": "http://dx.doi.org/10.56712/latam.v4i2.798"
+        },
+        {
+          "id": "https://openalex.org/W2973763692",
+          "title": "Métodos de minería de datos ligados a la inteligencia artificial aplicables a riesgo crediticio",
+          "url": "https://doi.org/10.29166/revfig.v1i1.61"
+        },
+        {
+          "id": "https://openalex.org/W7215807552",
+          "title": "Metacognición y su inﬂuencia en el aprendizaje de competencias matemáticas de los estudiantes del II Ciclo de la Facultad de Ciencias Administrativas y Contables, Carrera Profesional de Administración y Sistemas, de la Universidad Peruana Los Andes- Semestre 2017-I, Filial Lima",
+          "url": "http://datos.unjfsc.edu.pe/index.php/BIGBANG/article/view/747"
+        },
+        {
+          "id": "SCIELO:ecu:S2477-90752021000200048",
+          "title": "Predicción de quiebra bajo el modelo Z2 Altman en empresas de construcción de edificios residenciales de la provincia del Azuay",
+          "url": "https://scielo.senescyt.gob.ec/scielo.php?script=sci_arttext&pid=S2477-90752021000200048&tlng=es"
+        },
+        {
+          "id": "https://openalex.org/W4205802243",
+          "title": "Predicción de quiebra empresarial en la auditoría financiera de pymes: un estudio descriptivo",
+          "url": "https://doi.org/10.23913/ricea.v11i21.179"
+        }
+      ],
+      "after": [
+        {
+          "id": "https://openalex.org/W4416063149",
+          "title": "Explainable AI in Credit Models: Balancing Predictive Power with Transparency",
+          "e5_rank": 18,
+          "reranker_rank": 1,
+          "score": 3.0652620792388916
+        },
+        {
+          "id": "https://openalex.org/W4386465591",
+          "title": "Machine learning and financial big data control using IoT",
+          "e5_rank": 16,
+          "reranker_rank": 2,
+          "score": 2.534874439239502
+        },
+        {
+          "id": "https://openalex.org/W4416465196",
+          "title": "Predictive power of ensemble learning in audit qualifications: insights from Indian firms",
+          "e5_rank": 336,
+          "reranker_rank": 3,
+          "score": 1.7549800872802734
+        },
+        {
+          "id": "https://openalex.org/W4414828427",
+          "title": "A Comparative Study of Machine Learning Algorithms for Predicting Housing Prices in Chinese Cities",
+          "e5_rank": 65,
+          "reranker_rank": 4,
+          "score": 1.663482904434204
+        },
+        {
+          "id": "https://openalex.org/W4386805170",
+          "title": "A Comparative Study of Feature Selection Techniques in Machine Learning for Predicting Stock Market Trends",
+          "e5_rank": 171,
+          "reranker_rank": 5,
+          "score": 1.650783896446228
+        }
+      ]
+    },
+    {
+      "name": "cultivos",
+      "before": [
+        {
+          "id": "https://openalex.org/W4404651996",
+          "title": "New Frontiers: Fostering Students’ Critical Thinking in Science Through Virtual Mobility",
+          "url": "http://dx.doi.org/10.36366/frontiers.v36i3.850"
+        },
+        {
+          "id": "https://openalex.org/W3168284756",
+          "title": "Proceso de transformación digital para la venta y comercialización de panela en pequeños productores",
+          "url": "https://repository.unimilitar.edu.co/handle/10654/38274"
+        },
+        {
+          "id": "https://openalex.org/W4386307387",
+          "title": "Utilizing Deep Convolutional Neural Networks for Multi-Classification of Plant Diseases from Image Data",
+          "url": "https://doi.org/10.18280/ts.400416"
+        },
+        {
+          "id": "https://openalex.org/W3177256964",
+          "title": "Automatic detection of anomalies in the wire fence",
+          "url": "http://oa.upm.es/66165/"
+        },
+        {
+          "id": "https://openalex.org/W7132090965",
+          "title": "Asistente de concentración impulsado por Inteligencia Artificial para estudiantes universitarios ; Artificial intelligence-powered concentration assistant for university students",
+          "url": "https://bibliotecas.ucasal.edu.ar/opac_css/index.php?lvl=cmspage&pageid=24&id_notice=76561"
+        }
+      ],
+      "after": [
+        {
+          "id": "https://openalex.org/W4408118937",
+          "title": "Classification of Poultry Birds Based on Health State Using Convolutional Neural Network",
+          "e5_rank": 497,
+          "reranker_rank": 1,
+          "score": 3.9971635341644287
+        },
+        {
+          "id": "https://openalex.org/W4392055931",
+          "title": "Image‐Feature Based Deep Learning Model for Plant Leaf Disease Detection",
+          "e5_rank": 41,
+          "reranker_rank": 2,
+          "score": 3.7242915630340576
+        },
+        {
+          "id": "https://openalex.org/W4383052158",
+          "title": "DETECTION OF PLANT LEAVE DISEASE USING HYBRID TECHNIQUES",
+          "e5_rank": 53,
+          "reranker_rank": 3,
+          "score": 3.6477036476135254
+        },
+        {
+          "id": "https://openalex.org/W4386307387",
+          "title": "Utilizing Deep Convolutional Neural Networks for Multi-Classification of Plant Diseases from Image Data",
+          "e5_rank": 3,
+          "reranker_rank": 4,
+          "score": 2.8480429649353027
+        },
+        {
+          "id": "https://openalex.org/W4412528154",
+          "title": "Building a fish disease detection application based on Smart Fishery with Image Processing and Deep Learning",
+          "e5_rank": 459,
+          "reranker_rank": 5,
+          "score": 2.3124072551727295
+        }
+      ]
+    }
+  ],
+  "index_checks": [
+    {
+      "id": "https://openalex.org/W4404651996",
+      "title": "New Frontiers: Fostering Students’ Critical Thinking in Science Through Virtual Mobility",
+      "saved_vs_current_cosine": 1.0000001192092896
+    },
+    {
+      "id": "https://openalex.org/W4386307387",
+      "title": "Utilizing Deep Convolutional Neural Networks for Multi-Classification of Plant Diseases from Image Data",
+      "saved_vs_current_cosine": 1.0
+    },
+    {
+      "id": "https://openalex.org/W4408118937",
+      "title": "Classification of Poultry Birds Based on Health State Using Convolutional Neural Network",
+      "saved_vs_current_cosine": 1.0
+    },
+    {
+      "id": "https://openalex.org/W2973763692",
+      "title": "Métodos de minería de datos ligados a la inteligencia artificial aplicables a riesgo crediticio",
+      "saved_vs_current_cosine": 1.0
+    },
+    {
+      "id": "https://openalex.org/W7116704433",
+      "title": "Evaluation of Machine Learning Models in Solar Radiation Prediction for Photovoltaic System Design",
+      "saved_vs_current_cosine": 1.0
+    },
+    {
+      "id": "https://openalex.org/W7215807552",
+      "title": "Metacognición y su inﬂuencia en el aprendizaje de competencias matemáticas de los estudiantes del II Ciclo de la Facultad de Ciencias Administrativas y Contables, Carrera Profesional de Administración y Sistemas, de la Universidad Peruana Los Andes- Semestre 2017-I, Filial Lima",
+      "saved_vs_current_cosine": 1.0
+    }
+  ]
+}
