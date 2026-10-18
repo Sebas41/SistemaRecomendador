@@ -18,6 +18,11 @@ from .settings import (
     EMBEDDINGS,
     EMBEDDINGS_MANIFEST,
     EMBEDDING_BATCH_SIZE,
+    HYBRID_MANIFEST,
+    HYBRID_MATRIX,
+    HYBRID_MAX_FEATURES,
+    HYBRID_RRF_K,
+    HYBRID_VECTORIZER,
     MIN_RERANK_SCORE,
     MODEL_NAME,
     MODEL_REVISION,
@@ -31,6 +36,24 @@ from .settings import (
 
 def article_text(row: pd.Series | dict[str, Any]) -> str:
     return f"{row.get('title', '')}. {row.get('abstract', '')}".strip()
+
+
+def _lexical_normalize(value: Any) -> str:
+    """Normaliza texto para el índice léxico multilingüe sin traducirlo."""
+    text = unicodedata.normalize("NFKD", str(value or "").casefold())
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^\w]+", " ", text).strip()
+
+
+def hybrid_text(row: pd.Series | dict[str, Any]) -> str:
+    """Da más peso al título y conserva resumen y palabras clave disponibles."""
+    keywords = row.get("keywords", [])
+    if isinstance(keywords, (list, tuple, np.ndarray)):
+        keywords = " ".join(str(value) for value in keywords if value)
+    return _lexical_normalize(
+        f"{row.get('title', '')} {row.get('title', '')} "
+        f"{row.get('abstract', '')} {keywords}"
+    )
 
 
 def _best_device() -> str:
@@ -165,6 +188,64 @@ def build_tfidf_index(catalog: pd.DataFrame) -> None:
     TFIDF_IDS.write_text(json.dumps(english["id"].tolist()), encoding="utf-8")
 
 
+def build_hybrid_index(catalog: pd.DataFrame) -> None:
+    """Crea el índice léxico bilingüe usado por la recuperación combinada."""
+    if catalog.empty:
+        raise ValueError("No se puede indexar un catálogo vacío.")
+    vectorizer = TfidfVectorizer(
+        ngram_range=(1, 2), max_features=HYBRID_MAX_FEATURES, min_df=2,
+        max_df=0.95, sublinear_tf=True, dtype=np.float32,
+    )
+    matrix = vectorizer.fit_transform(catalog.apply(hybrid_text, axis=1).tolist())
+    HYBRID_VECTORIZER.parent.mkdir(parents=True, exist_ok=True)
+    import joblib
+    from scipy.sparse import save_npz
+
+    joblib.dump(vectorizer, HYBRID_VECTORIZER)
+    save_npz(HYBRID_MATRIX, matrix)
+    HYBRID_MANIFEST.write_text(json.dumps({
+        "catalog_ids": catalog["id"].tolist(), "ngram_range": [1, 2],
+        "max_features": HYBRID_MAX_FEATURES, "min_df": 2, "max_df": 0.95,
+        "sublinear_tf": True, "normalization": "casefold_and_strip_accents",
+        "document": "title twice, abstract, keywords",
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_hybrid_index(catalog: pd.DataFrame):
+    """Carga el índice léxico y rechaza artefactos de otro catálogo."""
+    if not all(path.exists() for path in (HYBRID_VECTORIZER, HYBRID_MATRIX, HYBRID_MANIFEST)):
+        raise FileNotFoundError("Falta el índice híbrido. Ejecuta: python scripts/build_index.py --hybrid-only")
+    import joblib
+    from scipy.sparse import load_npz
+
+    manifest = json.loads(HYBRID_MANIFEST.read_text(encoding="utf-8"))
+    if manifest.get("catalog_ids") != catalog["id"].tolist():
+        raise ValueError("El índice híbrido no coincide con el catálogo actual. Regenera el índice.")
+    matrix = load_npz(HYBRID_MATRIX)
+    if matrix.shape[0] != len(catalog):
+        raise ValueError("La cantidad de filas del índice híbrido no coincide con el catálogo.")
+    return joblib.load(HYBRID_VECTORIZER), matrix, manifest
+
+
+def reciprocal_rank_fusion(rankings: list[list[str]], *, k: int = HYBRID_RRF_K,
+                           weights: list[float] | None = None) -> dict[str, float]:
+    """Fusiona rankings por posición; conserva el mejor resultado en duplicados."""
+    if k <= 0:
+        raise ValueError("La constante RRF debe ser positiva.")
+    weights = weights or [1.0] * len(rankings)
+    if len(weights) != len(rankings) or any(weight < 0 for weight in weights):
+        raise ValueError("Los pesos RRF deben ser no negativos y corresponder a cada ranking.")
+    scores: dict[str, float] = {}
+    for ranking, weight in zip(rankings, weights):
+        seen: set[str] = set()
+        for rank, identifier in enumerate(ranking, start=1):
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+            scores[identifier] = scores.get(identifier, 0.0) + weight / (k + rank)
+    return scores
+
+
 def _semantic_evidence(query: str, abstract: str, model: Any) -> str:
     sentences = [part.strip() for part in abstract.replace("? ", "?\n").replace("! ", "!\n").replace(". ", ".\n").splitlines() if len(part.split()) >= 8]
     if not sentences:
@@ -293,20 +374,34 @@ def recommend_similar(catalog: pd.DataFrame, article_id: str, *, top_k: int = 5,
     return candidates
 
 
-def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", top_k: int = 5, embeddings: np.ndarray | None = None, model: Any | None = None, reranker: Any | None = None, fields: list[str] | None = None, min_year: int | None = None, max_year: int | None = None, language: str = "Todos", generate_evidence: bool = True) -> pd.DataFrame:
+def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", top_k: int = 5,
+              embeddings: np.ndarray | None = None, model: Any | None = None,
+              reranker: Any | None = None, fields: list[str] | None = None,
+              min_year: int | None = None, max_year: int | None = None,
+              language: str = "Todos", generate_evidence: bool = True,
+              rerank_candidates: int = RERANK_CANDIDATES,
+              rerank_weight: float = 0.5, rerank_passage: str = "enriched",
+              diagnostics: dict[str, Any] | None = None) -> pd.DataFrame:
     """Recupera candidatos y los ordena por relevancia; los puntajes no son probabilidades."""
     if len(query.split()) < 5:
         raise ValueError("Describe el proyecto con al menos cinco palabras.")
     if top_k <= 0:
         raise ValueError("La cantidad de resultados debe ser positiva.")
-    if engine not in {"semantico", "tfidf"}:
-        raise ValueError("Motor desconocido: selecciona semántico o TF-IDF.")
+    valid_engines = {"e5", "semantico", "tfidf", "hibrido", "hibrido_sin_rerank"}
+    if engine not in valid_engines:
+        raise ValueError("Motor desconocido: selecciona e5, semántico, híbrido o TF-IDF.")
+    if rerank_candidates <= 0:
+        raise ValueError("La cantidad de candidatos del reordenador debe ser positiva.")
+    if not 0 <= rerank_weight <= 1:
+        raise ValueError("El peso del reordenador debe estar entre cero y uno.")
+    if rerank_passage not in {"enriched", "text"}:
+        raise ValueError("El pasaje del reordenador debe ser enriched o text.")
     candidates = _filter_catalog(catalog, fields=fields, min_year=min_year,
                                  max_year=max_year, language=language)
     if candidates.empty:
-        return _empty_results(candidates, semantic=engine == "semantico")
+        return _empty_results(candidates, semantic=engine != "tfidf")
 
-    if engine == "semantico":
+    if engine in {"e5", "semantico", "hibrido", "hibrido_sin_rerank"}:
         model = model or _load_sentence_model()
         vectors = embeddings if embeddings is not None else load_embeddings(catalog)
         _validate_vectors(catalog, vectors)
@@ -316,24 +411,66 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
         semantic_scores = np.asarray(
             vectors[candidate_positions] @ np.asarray(query_vector).reshape(-1)
         ).reshape(-1)
-        candidates = candidates.copy()
-        candidates["semantic_score"] = semantic_scores.astype(np.float32)
-        candidates = candidates.sort_values(
-            ["semantic_score", "year"], ascending=[False, False]
-        ).head(max(top_k, RERANK_CANDIDATES)).copy()
+        candidates = candidates.copy().assign(semantic_score=semantic_scores.astype(np.float32))
+        semantic_order = candidates.sort_values(["semantic_score", "year", "id"], ascending=[False, False, True], kind="stable")
+        semantic_order["semantic_rank"] = np.arange(1, len(semantic_order) + 1)
+        if engine in {"hibrido", "hibrido_sin_rerank"}:
+            vectorizer, matrix, _ = load_hybrid_index(catalog)
+            lexical_query = vectorizer.transform([_lexical_normalize(query)])
+            if lexical_query.nnz:
+                lexical_scores = cosine_similarity(lexical_query, matrix[candidate_positions]).ravel()
+                lexical = candidates.assign(lexical_score=lexical_scores.astype(np.float32))
+                lexical = lexical[lexical["lexical_score"] > 0].sort_values(
+                    ["lexical_score", "year", "id"], ascending=[False, False, True], kind="stable"
+                ).head(rerank_candidates)
+            else:
+                lexical = candidates.iloc[0:0].copy().assign(lexical_score=pd.Series(dtype="float32"))
+            semantic_shortlist = semantic_order.head(rerank_candidates)
+            fused = reciprocal_rank_fusion(
+                [semantic_shortlist["id"].tolist(), lexical["id"].tolist()]
+            )
+            candidates = candidates[candidates["id"].isin(fused)].copy()
+            candidates["retrieval_score"] = candidates["id"].map(fused).astype(np.float32)
+            candidates["semantic_rank"] = candidates["id"].map(semantic_order.set_index("id")["semantic_rank"])
+            candidates["lexical_score"] = candidates["id"].map(lexical.set_index("id")["lexical_score"])
+            candidates = candidates.sort_values(["retrieval_score", "year", "id"], ascending=[False, False, True], kind="stable")
+            if diagnostics is not None:
+                diagnostics.update({"semantic_candidate_ids": semantic_shortlist["id"].tolist(),
+                                    "lexical_candidate_ids": lexical["id"].tolist(),
+                                    "lexical_query_has_terms": bool(lexical_query.nnz),
+                                    "retrieval_candidate_ids": candidates["id"].tolist()})
+        else:
+            candidates = semantic_order.head(rerank_candidates).copy()
+            candidates["retrieval_score"] = candidates["semantic_score"]
+            if diagnostics is not None:
+                diagnostics.update({"semantic_candidate_ids": candidates["id"].tolist(),
+                                    "retrieval_candidate_ids": candidates["id"].tolist()})
 
-        reranker = reranker or _load_reranker()
-        pairs = [
-            (query, _reranker_passage(article))
-            for _, article in candidates.iterrows()
-        ]
-        scores = np.asarray(
-            reranker.predict(pairs, batch_size=32, show_progress_bar=False)
-        ).reshape(-1)
-        candidates["score"] = scores.astype(np.float32)
-        candidates = candidates[candidates["score"] >= MIN_RERANK_SCORE]
-        if candidates.empty:
-            return _empty_results(candidates, semantic=True)
+        if engine in {"semantico", "hibrido"}:
+            reranker = reranker or _load_reranker()
+            passage = _reranker_passage if rerank_passage == "enriched" else article_text
+            pairs = [(query, passage(article)) for _, article in candidates.iterrows()]
+            rerank_scores = np.asarray(reranker.predict(pairs, batch_size=32, show_progress_bar=False)).reshape(-1)
+            candidates["reranker_score"] = rerank_scores.astype(np.float32)
+            candidates = candidates[candidates["reranker_score"] >= MIN_RERANK_SCORE].copy()
+            if candidates.empty:
+                return _empty_results(candidates, semantic=True)
+            rerank_order = candidates.sort_values(["reranker_score", "year", "id"], ascending=[False, False, True], kind="stable")
+            if engine == "hibrido":
+                fused = reciprocal_rank_fusion(
+                    [candidates.sort_values(["retrieval_score", "year", "id"], ascending=[False, False, True])["id"].tolist(),
+                     rerank_order["id"].tolist()],
+                    weights=[1 - rerank_weight, rerank_weight],
+                )
+                candidates["score"] = candidates["id"].map(fused).astype(np.float32)
+            else:
+                candidates["score"] = candidates["reranker_score"]
+            if diagnostics is not None:
+                diagnostics.update({"reranked_candidate_ids": rerank_order["id"].tolist(),
+                                    "excluded_negative_ids": [],
+                                    "reranker_passage": rerank_passage})
+        else:
+            candidates["score"] = candidates["retrieval_score"] if engine == "hibrido_sin_rerank" else candidates["semantic_score"]
     else:
         import joblib
         from scipy.sparse import load_npz
@@ -362,7 +499,7 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
         candidates = candidates[candidates["score"] > 0]
     candidates = candidates.sort_values(["score", "year"], ascending=[False, False])
     candidates = candidates.head(top_k).reset_index(drop=True)
-    if engine == "semantico" and generate_evidence:
+    if engine != "tfidf" and generate_evidence:
         model = model or _load_sentence_model()
         candidates["evidence"] = [_semantic_evidence(query, abstract, model) for abstract in candidates["abstract"].tolist()]
     else:

@@ -7,6 +7,13 @@ import pytest
 import sisreco.engine as engine
 
 
+class FakeSemanticModel:
+    def encode(self, inputs, **kwargs):
+        if isinstance(inputs, str):
+            inputs = [inputs]
+        return np.asarray([[1.0, 0.0] if "solar" in value.lower() else [0.0, 1.0] for value in inputs], dtype=np.float32)
+
+
 def small_catalog():
     return pd.DataFrame([
         dict(id="solar", title="Solar power forecasting", abstract="Solar energy weather forecasting",
@@ -113,3 +120,47 @@ def test_tfidf_rejects_outdated_index(lexical_catalog):
     changed.loc[30, "id"] = "new-id"
     with pytest.raises(ValueError, match="no coincide"):
         engine.recommend(changed, "solar solar solar solar solar", engine="tfidf")
+
+
+def test_hybrid_index_and_rrf_recommendation(tmp_path, monkeypatch):
+    c = small_catalog().copy()
+    for name, filename in (("HYBRID_VECTORIZER", "hybrid.joblib"), ("HYBRID_MATRIX", "hybrid.npz"), ("HYBRID_MANIFEST", "hybrid.json")):
+        monkeypatch.setattr(engine, name, tmp_path / filename)
+    engine.build_hybrid_index(c)
+    vectorizer, matrix, manifest = engine.load_hybrid_index(c)
+    assert matrix.shape[0] == len(c)
+    assert manifest["catalog_ids"] == c["id"].tolist()
+    assert vectorizer.transform(["solar energy forecast"]).nnz > 0
+
+    class StableReranker:
+        def predict(self, pairs, **kwargs):
+            return np.asarray([float(len(passage)) for _, passage in pairs])
+
+    result = engine.recommend(
+        c, "solar energy forecasting research project", engine="hibrido", top_k=2,
+        embeddings=vectors(), model=FakeSemanticModel(), reranker=StableReranker(),
+        generate_evidence=False, rerank_candidates=2,
+    )
+    assert len(result) == 2
+    assert {"semantic_score", "lexical_score", "retrieval_score", "reranker_score", "score"} <= set(result.columns)
+    assert result.score.is_monotonic_decreasing
+
+
+def test_rrf_deduplicates_and_validates_weights():
+    scores = engine.reciprocal_rank_fusion([["a", "a", "b"], ["b", "a"]], k=10)
+    assert scores["a"] == pytest.approx(1 / 11 + 1 / 12)
+    assert scores["b"] == pytest.approx(1 / 13 + 1 / 11)
+    with pytest.raises(ValueError):
+        engine.reciprocal_rank_fusion([["a"]], weights=[1, 1])
+
+
+def test_hybrid_keeps_semantic_results_when_lexical_query_is_oov(tmp_path, monkeypatch):
+    c = small_catalog().copy()
+    for name, filename in (("HYBRID_VECTORIZER", "hybrid.joblib"), ("HYBRID_MATRIX", "hybrid.npz"), ("HYBRID_MANIFEST", "hybrid.json")):
+        monkeypatch.setattr(engine, name, tmp_path / filename)
+    engine.build_hybrid_index(c)
+    result = engine.recommend(
+        c, "zzzz qqqq xxxxx yyyyy vvvvv", engine="hibrido_sin_rerank", top_k=2,
+        embeddings=vectors(), model=FakeSemanticModel(), generate_evidence=False,
+    )
+    assert len(result) == 2
