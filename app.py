@@ -93,8 +93,15 @@ with st.sidebar:
             st.caption(f"Año disponible: {min_available}")
         language_label = st.selectbox("Idioma del artículo", ["Todos", "Inglés", "Español"], key="language")
         language = {"Todos": "Todos", "Inglés": "en", "Español": "es"}[language_label]
-        engine_label = st.radio("Método de búsqueda", ["Semántico bilingüe", "TF-IDF (inglés)"], key="engine")
-        engine = "semantico" if engine_label == "Semántico bilingüe" else "tfidf"
+        engine_label = st.radio(
+            "Método de búsqueda",
+            ["Semántico bilingüe", "Híbrido experimental", "TF-IDF (inglés)"], key="engine",
+        )
+        engine = {
+            "Semántico bilingüe": "semantico",
+            "Híbrido experimental": "hibrido",
+            "TF-IDF (inglés)": "tfidf",
+        }[engine_label]
         top_k = st.radio("Resultados", [5, 10], horizontal=True, key="top_k")
         submitted = st.form_submit_button("Buscar artículos", type="primary", use_container_width=True)
     st.caption("Ver similares conserva los filtros de la búsqueda inicial. Pulsa Buscar para aplicar cambios.")
@@ -120,9 +127,9 @@ if submitted:
             with st.spinner("Buscando artículos relacionados..."):
                 results = recommend(
                     catalog, full_query, engine=engine, **options,
-                    embeddings=current_vectors() if engine == "semantico" else None,
-                    model=load_model() if engine == "semantico" else None,
-                    reranker=load_reranker() if engine == "semantico" else None,
+                    embeddings=current_vectors() if engine != "tfidf" else None,
+                    model=load_model() if engine != "tfidf" else None,
+                    reranker=load_reranker() if engine in {"semantico", "hibrido"} else None,
                 )
             view = dict(mode="query", query=full_query, engine=engine, options=options, results=results)
             st.session_state["current_view"] = view
@@ -191,7 +198,12 @@ else:
             collection = text_or_default(article.get("source_collection"))
             if collection:
                 source_label += f" ({collection})"
-            score_label = "Similitud con el artículo" if is_similar else "Relevancia del modelo" if view["engine"] == "semantico" else "Similitud TF-IDF"
+            score_label = (
+                "Similitud con el artículo" if is_similar else
+                "Puntuación híbrida experimental" if view["engine"] == "hibrido" else
+                "Relevancia del modelo" if view["engine"] == "semantico" else
+                "Similitud TF-IDF"
+            )
             with st.container(border=True):
                 st.markdown(f"**{rank}. {article['title']}**")
                 st.caption(f"{authors_text} · {article['year']} · {article['field']} · {source_label}")

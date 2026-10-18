@@ -67,3 +67,29 @@ def test_explore_similar_keeps_results_filters_and_back_navigation(tmp_path, mon
     assert not app.session_state["view_history"]
     assert len(calls) == 1
     assert not app.exception
+
+
+def test_app_exposes_hybrid_as_experimental_method(tmp_path, monkeypatch):
+    frame = pd.DataFrame([dict(id="solar", title="Solar forecasting", abstract="Solar energy forecast research.", authors=[], year=2022, language="en", field="Energy", doi=None)])
+    catalog_path = tmp_path / "catalog.parquet"
+    frame.to_parquet(catalog_path)
+    monkeypatch.setattr(settings, "CATALOG", catalog_path)
+    monkeypatch.setattr(settings, "DATA_MANIFEST", tmp_path / "absent.json")
+    for name in ("EMBEDDINGS", "EMBEDDINGS_MANIFEST"):
+        path = tmp_path / name
+        path.write_text("fixture")
+        monkeypatch.setattr(settings, name, path)
+    monkeypatch.setattr(engine, "load_embeddings", lambda _: np.array([[1, 0]], dtype=np.float32))
+    monkeypatch.setattr(engine, "_load_sentence_model", lambda **_: object())
+    monkeypatch.setattr(engine, "_load_reranker", lambda **_: object())
+    seen = []
+    def search(catalog, query, **kwargs):
+        seen.append(kwargs["engine"])
+        return catalog.assign(score=.1, evidence="")
+    monkeypatch.setattr(engine, "recommend", search)
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app.radio(key="engine").set_value("Híbrido experimental")
+    app.text_area(key="query").set_value("Solar energy forecasting for electricity research")
+    next(button for button in app.button if button.label == "Buscar artículos").click().run()
+    assert seen == ["hibrido"]
+    assert not app.exception

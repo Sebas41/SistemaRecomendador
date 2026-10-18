@@ -204,6 +204,8 @@ def test_ranking_metrics():
     assert precision_at_k([2, 0, 1, 0, 0], 5) == pytest.approx(0.4)
     assert ndcg_at_k([2, 1, 0], 3) == pytest.approx(1.0)
     assert ndcg_at_k([0, 2], 2) < 1.0
+    # The ideal order may include relevant documents returned by another engine.
+    assert ndcg_at_k([2, 0], 2, ideal_relevances=[2, 2, 0]) < 1.0
 
 
 def test_metrics_validate_k():

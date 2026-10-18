@@ -14,7 +14,8 @@ def precision_at_k(relevances: list[int] | np.ndarray, k: int = 5, threshold: in
     return float(np.sum(values >= threshold) / k)
 
 
-def ndcg_at_k(relevances: list[int] | np.ndarray, k: int = 5) -> float:
+def ndcg_at_k(relevances: list[int] | np.ndarray, k: int = 5,
+              ideal_relevances: list[int] | np.ndarray | None = None) -> float:
     if k <= 0:
         raise ValueError("k debe ser positivo")
     values = np.asarray(relevances[:k], dtype=float)
@@ -22,6 +23,6 @@ def ndcg_at_k(relevances: list[int] | np.ndarray, k: int = 5) -> float:
         return 0.0
     discounts = np.log2(np.arange(2, len(values) + 2))
     dcg = float(np.sum((np.power(2, values) - 1) / discounts))
-    ideal = np.sort(np.asarray(relevances, dtype=float))[::-1][:k]
+    ideal = np.sort(np.asarray(ideal_relevances if ideal_relevances is not None else relevances, dtype=float))[::-1][:k]
     ideal_dcg = float(np.sum((np.power(2, ideal) - 1) / np.log2(np.arange(2, len(ideal) + 2))))
     return dcg / ideal_dcg if ideal_dcg else 0.0
