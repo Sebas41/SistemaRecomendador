@@ -44,18 +44,18 @@ def _best_device() -> str:
 
 
 @lru_cache(maxsize=1)
-def _load_sentence_model(model_name: str = MODEL_NAME):
+def _load_sentence_model(model_name: str = MODEL_NAME, *, local_files_only: bool = False):
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(model_name, device=_best_device())
+    return SentenceTransformer(model_name, device=_best_device(), local_files_only=local_files_only)
 
 
 @lru_cache(maxsize=1)
-def _load_reranker(model_name: str = RERANKER_MODEL_NAME):
+def _load_reranker(model_name: str = RERANKER_MODEL_NAME, *, local_files_only: bool = False):
     """Carga el modelo multilingüe que revisa la lista corta de candidatos."""
     from sentence_transformers import CrossEncoder
 
-    return CrossEncoder(model_name, device=_best_device(), max_length=384)
+    return CrossEncoder(model_name, device=_best_device(), max_length=384, local_files_only=local_files_only)
 
 
 def encode_documents(catalog: pd.DataFrame, model: Any | None = None, batch_size: int = EMBEDDING_BATCH_SIZE, show_progress_bar: bool = True) -> np.ndarray:
@@ -192,7 +192,7 @@ def _reranker_passage(article: pd.Series) -> str:
 
 
 def _empty_results(candidates: pd.DataFrame, *, semantic: bool = False) -> pd.DataFrame:
-    result = candidates.copy()
+    result = candidates.iloc[0:0].copy()
     result["score"] = pd.Series(dtype="float32")
     if semantic:
         result["semantic_score"] = pd.Series(dtype="float32")
@@ -200,45 +200,97 @@ def _empty_results(candidates: pd.DataFrame, *, semantic: bool = False) -> pd.Da
     return result
 
 
-_QUERY_CONCEPTS = {
-    "ai_agents": (
-        "agentes de IA",
-        re.compile(
-            r"\b(?:agentes?\s+de\s+(?:inteligencia\s+artificial|ia)|"
-            r"(?:artificial\s+intelligence|ai)\s+agents?|agentic\s+ai|"
-            r"autonomous\s+(?:ai\s+)?agents?)\b"
-        ),
-    ),
-    "enterprise_architecture": (
-        "arquitectura empresarial",
-        re.compile(
-            r"\b(?:arquitectura\s+empresarial|arquitectura\s+de\s+empresa|"
-            r"enterprise\s+architecture|enterprise\s+architect(?:ure)?|"
-            r"business\s+architecture)\b"
-        ),
-    ),
-}
+def _filter_catalog(catalog: pd.DataFrame, *, fields: list[str] | None = None,
+                    min_year: int | None = None, max_year: int | None = None,
+                    language: str = "Todos") -> pd.DataFrame:
+    if min_year is not None and max_year is not None and min_year > max_year:
+        raise ValueError("El año inicial no puede ser posterior al año final.")
+    if language not in {"Todos", "en", "es"}:
+        raise ValueError("Idioma desconocido: selecciona Todos, en o es.")
+    mask = np.ones(len(catalog), dtype=bool)
+    if fields:
+        mask &= catalog["field"].isin(fields).to_numpy()
+    if min_year is not None:
+        mask &= catalog["year"].ge(min_year).to_numpy()
+    if max_year is not None:
+        mask &= catalog["year"].le(max_year).to_numpy()
+    if language != "Todos":
+        mask &= catalog["language"].eq(language).to_numpy()
+    return catalog.loc[mask].copy()
 
 
-def _normalize_concept_text(text: str) -> str:
-    normalized = unicodedata.normalize("NFKD", text.casefold())
-    return "".join(char for char in normalized if not unicodedata.combining(char))
+def _validate_vectors(catalog: pd.DataFrame, vectors: np.ndarray) -> None:
+    if vectors.ndim != 2 or vectors.shape[0] != len(catalog) or vectors.shape[1] == 0:
+        raise ValueError("Los vectores no corresponden al catálogo.")
+    if not catalog["id"].is_unique:
+        raise ValueError("El catálogo contiene identificadores duplicados.")
 
 
-def _query_concepts(query: str) -> list[str]:
-    normalized = _normalize_concept_text(query)
-    return [key for key, (_, pattern) in _QUERY_CONCEPTS.items() if pattern.search(normalized)]
+def _title_key(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = unicodedata.normalize("NFKD", value.casefold())
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^\w]+", " ", text).strip()
 
 
-def _article_concepts(article: pd.Series, concept_ids: list[str]) -> list[str]:
-    parts = [article.get("title", ""), article.get("abstract", ""), article.get("topic", "")]
-    keywords = article.get("keywords", [])
-    if isinstance(keywords, (list, tuple, np.ndarray)):
-        parts.extend(keywords)
-    else:
-        parts.append(keywords)
-    text = _normalize_concept_text(" ".join(str(part) for part in parts if isinstance(part, str)))
-    return [key for key in concept_ids if _QUERY_CONCEPTS[key][1].search(text)]
+def _doi_key(value: Any) -> str:
+    if not isinstance(value, str):
+        return ""
+    return re.sub(r"^(?:https?://(?:dx\.)?doi\.org/|doi:\s*)", "", value.casefold().strip())
+
+
+def recommend_similar(catalog: pd.DataFrame, article_id: str, *, top_k: int = 5,
+                      embeddings: np.ndarray | None = None, fields: list[str] | None = None,
+                      min_year: int | None = None, max_year: int | None = None,
+                      language: str = "Todos") -> pd.DataFrame:
+    """Recomienda por contenido a partir de un artículo, sin volver a ejecutar los modelos.
+
+    Usa coseno entre vectores de título y resumen. Excluye el artículo de referencia
+    y sus duplicados por DOI o título; la cercanía no garantiza pertinencia científica.
+    """
+    if top_k <= 0:
+        raise ValueError("La cantidad de resultados debe ser positiva.")
+    frame = catalog.reset_index(drop=True)
+    seed_positions = np.flatnonzero(frame["id"].eq(article_id).to_numpy())
+    if len(seed_positions) != 1:
+        raise ValueError("El artículo seleccionado no existe o su identificador está duplicado.")
+    vectors = embeddings if embeddings is not None else load_embeddings(catalog)
+    _validate_vectors(catalog, vectors)
+    seed_position = int(seed_positions[0])
+    seed = frame.iloc[seed_position]
+    seed_vector = np.asarray(vectors[seed_position], dtype=np.float32)
+    seed_norm = float(np.linalg.norm(seed_vector))
+    if not np.isfinite(seed_norm) or seed_norm == 0:
+        raise ValueError("El artículo seleccionado no tiene un vector válido. Regenera el índice.")
+    candidates = _filter_catalog(frame, fields=fields, min_year=min_year,
+                                 max_year=max_year, language=language)
+    candidates = candidates[candidates["id"].ne(article_id)]
+    doi = _doi_key(seed.get("doi"))
+    title = _title_key(seed.get("title"))
+    if doi and "doi" in candidates:
+        candidates = candidates[candidates["doi"].map(_doi_key).ne(doi)]
+    if title:
+        candidates = candidates[candidates["title"].map(_title_key).ne(title)]
+    if candidates.empty:
+        return _empty_results(candidates)
+
+    # Compute over the full matrix once, avoiding a large advanced-index copy.
+    norms = np.sqrt(np.einsum("ij,ij->i", vectors, vectors))
+    denominator = norms * seed_norm
+    with np.errstate(invalid="ignore", divide="ignore"):
+        cosine = np.asarray(vectors @ seed_vector) / denominator
+    scores = cosine[candidates.index.to_numpy()]
+    valid = np.isfinite(scores) & (scores > 0)
+    candidates = candidates.loc[valid].copy()
+    candidates["score"] = np.clip(scores[valid], -1, 1).astype(np.float32)
+    candidates = candidates.sort_values(
+        ["score", "year", "id"], ascending=[False, False, True], kind="stable"
+    ).head(top_k).reset_index(drop=True)
+    candidates["evidence"] = ""
+    candidates["seed_id"] = article_id
+    candidates.attrs["recommendation_mode"] = "similar"
+    return candidates
 
 
 def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", top_k: int = 5, embeddings: np.ndarray | None = None, model: Any | None = None, reranker: Any | None = None, fields: list[str] | None = None, min_year: int | None = None, max_year: int | None = None, language: str = "Todos", generate_evidence: bool = True) -> pd.DataFrame:
@@ -249,23 +301,15 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
         raise ValueError("La cantidad de resultados debe ser positiva.")
     if engine not in {"semantico", "tfidf"}:
         raise ValueError("Motor desconocido: selecciona semántico o TF-IDF.")
-    candidates = catalog.copy()
-    if fields:
-        candidates = candidates[candidates["field"].isin(fields)]
-    if min_year is not None:
-        candidates = candidates[candidates["year"] >= min_year]
-    if max_year is not None:
-        candidates = candidates[candidates["year"] <= max_year]
-    if language in {"en", "es"}:
-        candidates = candidates[candidates["language"].eq(language)]
+    candidates = _filter_catalog(catalog, fields=fields, min_year=min_year,
+                                 max_year=max_year, language=language)
     if candidates.empty:
         return _empty_results(candidates, semantic=engine == "semantico")
 
     if engine == "semantico":
         model = model or _load_sentence_model()
         vectors = embeddings if embeddings is not None else load_embeddings(catalog)
-        if vectors.shape[0] != len(catalog):
-            raise ValueError("Los vectores no corresponden al catálogo.")
+        _validate_vectors(catalog, vectors)
         query_vector = model.encode([f"query: {query}"], normalize_embeddings=True, convert_to_numpy=True, show_progress_bar=False)
         positions = catalog.reset_index(drop=True).reset_index(names="_position").set_index("id")["_position"]
         candidate_positions = positions.loc[candidates["id"].tolist()].to_numpy()
@@ -274,31 +318,6 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
         ).reshape(-1)
         candidates = candidates.copy()
         candidates["semantic_score"] = semantic_scores.astype(np.float32)
-        concept_ids = _query_concepts(query)
-        if len(concept_ids) > 1:
-            matched = candidates.apply(
-                lambda article: _article_concepts(article, concept_ids), axis=1
-            )
-            direct = matched.map(lambda article_concepts: len(article_concepts) == len(concept_ids))
-            if direct.any():
-                candidates = candidates.loc[direct].copy()
-                matched = matched.loc[direct]
-                candidates["match_scope"] = "direct"
-            else:
-                partial = matched.map(bool)
-                if not partial.any():
-                    empty = _empty_results(candidates.iloc[0:0], semantic=True)
-                    empty["match_scope"] = pd.Series(dtype="object")
-                    empty.attrs["match_scope"] = "none"
-                    return empty
-                candidates = candidates.loc[partial].copy()
-                matched = matched.loc[partial]
-                candidates["match_scope"] = "partial"
-            candidates["matched_concepts"] = matched.map(
-                lambda article_concepts: [
-                    _QUERY_CONCEPTS[concept_id][0] for concept_id in article_concepts
-                ]
-            )
         candidates = candidates.sort_values(
             ["semantic_score", "year"], ascending=[False, False]
         ).head(max(top_k, RERANK_CANDIDATES)).copy()
@@ -312,11 +331,7 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
             reranker.predict(pairs, batch_size=32, show_progress_bar=False)
         ).reshape(-1)
         candidates["score"] = scores.astype(np.float32)
-        # A recognized multi-concept query has an explicit coverage check. Keep
-        # its direct or clearly labelled partial matches even when the raw
-        # cross-encoder score is negative; those scores are not calibrated.
-        if len(concept_ids) <= 1:
-            candidates = candidates[candidates["score"] >= MIN_RERANK_SCORE]
+        candidates = candidates[candidates["score"] >= MIN_RERANK_SCORE]
         if candidates.empty:
             return _empty_results(candidates, semantic=True)
     else:
@@ -328,37 +343,24 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
         vectorizer = joblib.load(TFIDF_VECTORIZER)
         matrix = load_npz(TFIDF_MATRIX)
         indexed_ids = json.loads(TFIDF_IDS.read_text(encoding="utf-8"))
+        if indexed_ids != catalog.loc[catalog["language"].eq("en"), "id"].tolist():
+            raise ValueError("El índice TF-IDF no coincide con el catálogo. Regenera el índice.")
         indexed_positions = {value: i for i, value in enumerate(indexed_ids)}
         candidates = candidates[candidates["language"].eq("en")]
         candidates = candidates[candidates["id"].isin(indexed_positions)]
         if candidates.empty:
-            return candidates.assign(score=pd.Series(dtype="float32"), evidence=pd.Series(dtype="object"))
+            return _empty_results(candidates.iloc[0:0])
         query_vector = vectorizer.transform([query])
         if query_vector.nnz == 0:
-            return candidates.assign(score=pd.Series(dtype="float32"), evidence=pd.Series(dtype="object"))
+            return _empty_results(candidates.iloc[0:0])
         positions = [indexed_positions[value] for value in candidates["id"]]
         scores = cosine_similarity(query_vector, matrix[positions]).ravel()
 
     candidates = candidates.copy()
     if engine == "tfidf":
         candidates["score"] = scores.astype(np.float32)
+        candidates = candidates[candidates["score"] > 0]
     candidates = candidates.sort_values(["score", "year"], ascending=[False, False])
-    if engine == "semantico" and candidates.get("match_scope", pd.Series(dtype="object")).eq("partial").any():
-        # If no article covers every detected concept, distribute the short
-        # list across the concepts instead of letting one partial match type
-        # crowd out the others.
-        selected_indices: list[Any] = []
-        concept_ids = _query_concepts(query)
-        ranked = candidates.reset_index(drop=True)
-        for offset in range(top_k):
-            concept_id = concept_ids[offset % len(concept_ids)]
-            label = _QUERY_CONCEPTS[concept_id][0]
-            for index, row in ranked.iterrows():
-                if index not in selected_indices and label in row["matched_concepts"]:
-                    selected_indices.append(index)
-                    break
-        selected_indices.extend(index for index in ranked.index if index not in selected_indices)
-        candidates = ranked.loc[selected_indices]
     candidates = candidates.head(top_k).reset_index(drop=True)
     if engine == "semantico" and generate_evidence:
         model = model or _load_sentence_model()
