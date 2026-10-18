@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -68,6 +70,127 @@ def clean_catalog(frame: pd.DataFrame) -> pd.DataFrame:
     return frame.drop(columns=["title_key", "_doi_key"]).reset_index(drop=True)
 
 
+# Patrones observados en los resúmenes de OpenAlex y SciELO: rótulos de sección,
+# avisos editoriales, texto UTF-8 leído como Latin-1 y portadillas de Wiley que
+# ocupan el lugar del resumen. El aviso exige un símbolo o una fórmula editorial
+# para no confundirlo con artículos cuyo tema es el derecho de autor.
+ABSTRACT_LABEL = re.compile(r"^\s*(?:abstract|resumen|summary|resumo)\b\s*[:.\-–]?\s*", re.IGNORECASE)
+COPYRIGHT_NOTICE = re.compile(
+    r"©|\bcopyright\s*(?:©|\(c\)|:|of\b)|\(c\)\s*\d{4}|\ball rights reserved\b"
+    r"|\btodos los derechos reservados\b|\bpublication history\b",
+    re.IGNORECASE,
+)
+LEADING_NOTICE = re.compile(r"^(?:©|copyright\b)[^.]{0,200}\.\s*", re.IGNORECASE)
+MOJIBAKE = re.compile(r"Ã[\x80-\xbf]|â€")
+FRONT_MATTER = re.compile(
+    r"Volume \d+,? Issue|Search for more papers by this author|First published:|ChemInform Abstract",
+    re.IGNORECASE,
+)
+
+
+def abstract_quality_flags(frame: pd.DataFrame) -> pd.DataFrame:
+    """Marca los problemas de calidad del resumen que afectan el texto indexado."""
+    abstract = frame["abstract"].fillna("").astype(str)
+    words = abstract.str.split().str.len()
+    return pd.DataFrame({
+        "empty_or_short": words < MIN_ABSTRACT_WORDS,
+        "label_prefix": abstract.str.contains(ABSTRACT_LABEL),
+        "copyright": abstract.str.contains(COPYRIGHT_NOTICE),
+        "mojibake": abstract.str.contains(MOJIBAKE) | frame["title"].fillna("").astype(str).str.contains(MOJIBAKE),
+        "front_matter": abstract.str.contains(FRONT_MATTER),
+        # Un mismo resumen en artículos distintos suele ser la descripción de la revista.
+        "shared_abstract": abstract.duplicated(keep=False) & abstract.ne(""),
+    }, index=frame.index)
+
+
+def _repair_mojibake_word(word: str) -> str:
+    # El texto UTF-8 decodificado como Windows-1252 se revierte byte a byte; los
+    # bytes sin carácter en esa tabla quedaron como su código Latin-1.
+    data = bytearray()
+    for char in word:
+        try:
+            data += char.encode("cp1252")
+        except UnicodeEncodeError:
+            if ord(char) > 255:
+                return word
+            data.append(ord(char))
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return word
+
+
+def clean_text(text: str) -> str:
+    """Normaliza Unicode y espacios, y repara la codificación de un título o resumen."""
+    text = unicodedata.normalize("NFC", str(text or ""))
+    if MOJIBAKE.search(text):
+        text = re.sub(r"\S+", lambda match: _repair_mojibake_word(match.group()) if MOJIBAKE.search(match.group()) else match.group(), text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def clean_abstract(text: str) -> str:
+    """Quita el rótulo inicial y el aviso editorial final, que no describen la investigación."""
+    text = ABSTRACT_LABEL.sub("", clean_text(text), count=1)
+    text = LEADING_NOTICE.sub("", text, count=1)
+    match = COPYRIGHT_NOTICE.search(text, len(text) // 2)
+    if match:
+        start = match.start()
+        # Un aviso entre paréntesis o corchetes se elimina completo.
+        opening = max(text.rfind("(", 0, start), text.rfind("[", 0, start))
+        if opening >= 0 and start - opening <= 80 and not re.search(r"[)\]]", text[opening:start]):
+            start = opening
+        text = text[:start]
+    return text.strip(" ;,")
+
+
+def _detect_language(text: str) -> str:
+    try:
+        return detect(text)
+    except LangDetectException:
+        return "unknown"
+
+
+def prepare_texts(frame: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Limpia títulos y resúmenes, asigna el idioma del resumen y excluye textos que no describen el artículo.
+
+    OpenAlex declara a menudo el idioma del título; el filtro de idioma y las
+    métricas por idioma necesitan el idioma del resumen, que es lo que se lee y se indexa.
+    """
+    frame = frame.copy()
+    flags = abstract_quality_flags(frame)
+    original_abstract = frame["abstract"].astype(str)
+    original_title = frame["title"].astype(str)
+    frame["title"] = original_title.map(clean_text)
+    frame["abstract"] = original_abstract.map(clean_abstract)
+    frame["language_declared"] = frame["language"]
+    frame["language"] = frame["abstract"].map(_detect_language)
+
+    excluded = pd.Series("", index=frame.index)
+    excluded[flags["front_matter"]] = "front_matter"
+    excluded[flags["shared_abstract"] & excluded.eq("")] = "shared_abstract"
+    too_short = frame["abstract"].str.split().str.len() < MIN_ABSTRACT_WORDS
+    excluded[too_short & excluded.eq("")] = "short_after_cleaning"
+    other_language = ~frame["language"].isin(["en", "es"])
+    excluded[other_language & excluded.eq("")] = "language_not_en_es"
+    modified = frame["abstract"].ne(original_abstract.str.replace(r"\s+", " ", regex=True).str.strip()) | frame["title"].ne(original_title)
+
+    group = [frame["source_database"], frame["language_declared"]]
+    report = {
+        "records_in": int(len(frame)),
+        "modified_text": int(modified.sum()),
+        "modified_by_source_language": {f"{s}|{l}": int(n) for (s, l), n in modified.groupby(group).sum().items()},
+        "relabelled_language": int((frame["language"].ne(frame["language_declared"]) & excluded.eq("")).sum()),
+        "excluded": {reason: int(n) for reason, n in excluded[excluded.ne("")].value_counts().items()},
+        "excluded_by_source_language": {
+            f"{s}|{l}|{reason}": int(n)
+            for (s, l, reason), n in excluded[excluded.ne("")].groupby([*group, excluded[excluded.ne("")]]).size().items()
+        },
+    }
+    kept = frame.loc[excluded.eq("")].reset_index(drop=True)
+    report["records_out"] = int(len(kept))
+    return kept, report
+
+
 def _read_raw_jsonl(path: Path) -> pd.DataFrame:
     import gzip
 
@@ -80,15 +203,25 @@ def _read_raw_jsonl(path: Path) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATALOG) -> pd.DataFrame:
+def _raw_frames(raw_path: Path | None = RAW_CATALOG) -> tuple[list[Path], list[pd.DataFrame]]:
     raw_paths = [path for path in (raw_path, RAW_SCIELO_CATALOG) if path and path.exists()]
     if not raw_paths:
         raise FileNotFoundError(
             f"No se encontró un catálogo crudo. Ejecuta: python scripts/download_data.py"
         )
-    frames = [_read_raw_jsonl(path) for path in raw_paths]
+    return raw_paths, [_read_raw_jsonl(path) for path in raw_paths]
+
+
+def load_catalog_before_text_cleaning(raw_path: Path | None = RAW_CATALOG) -> pd.DataFrame:
+    """Reconstruye el catálogo desde los archivos crudos sin limpiar los textos, para el EDA."""
+    _, frames = _raw_frames(raw_path)
+    return clean_catalog(pd.concat(frames, ignore_index=True))
+
+
+def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATALOG) -> pd.DataFrame:
+    raw_paths, frames = _raw_frames(raw_path)
     frame = pd.concat(frames, ignore_index=True)
-    cleaned = clean_catalog(frame)
+    cleaned, text_report = prepare_texts(clean_catalog(frame))
     openalex = cleaned[cleaned["source_database"].eq("OpenAlex")]
     field_counts = openalex["field"].value_counts().to_dict()
     underfilled = {field: n for field, n in field_counts.items() if n < MINIMUM_PER_FIELD}
@@ -117,7 +250,12 @@ def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATAL
             "OpenAlex": "CC0",
             "SciELO": "Article metadata; article-level reuse terms may vary by publication",
         },
-        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+        # La fecha de extracción es la de la descarga; reconstruir el catálogo no la cambia.
+        "retrieved_at_utc": (
+            json.loads(RAW_OPENALEX_SAMPLE_MANIFEST.read_text(encoding="utf-8")).get("retrieved_at_utc")
+            if RAW_OPENALEX_SAMPLE_MANIFEST.exists() else None
+        ),
+        "built_at_utc": datetime.now(timezone.utc).isoformat(),
         "source_file": raw_path.name if raw_path and raw_path.exists() else None,
         "source_sha256": hashlib.sha256(raw_path.read_bytes()).hexdigest() if raw_path and raw_path.exists() else None,
         "raw_sources": raw_sources,
@@ -144,6 +282,7 @@ def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATAL
         "raw_records": int(len(frame)),
         "valid_records": int(len(cleaned)),
         "discarded_during_cleaning": int(len(frame) - len(cleaned)),
+        "text_cleaning": text_report,
         "inferred_language_records": int(cleaned["language_inferred"].sum()),
         "by_field": {str(k): int(v) for k, v in field_counts.items()},
         "by_language": {str(k): int(v) for k, v in cleaned["language"].value_counts().items()},
@@ -157,7 +296,7 @@ def build_catalog(raw_path: Path | None = RAW_CATALOG, output_path: Path = CATAL
             for (source, field), count in cleaned.groupby(["source_database", "field"]).size().items()
         },
         "scielo_field_note": "SciELO field labels follow the journal's ArticleMeta classification; they are not mapped to OpenAlex's 26 fields.",
-        "language_detection": "OpenAlex and SciELO ArticleMeta language metadata; langdetect is used only when source language metadata is missing.",
+        "language_detection": "language is detected with langdetect (seed 42) on the cleaned abstract; language_declared keeps the source metadata. Abstracts outside English and Spanish are excluded.",
     }
     DATA_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
     DATA_MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
