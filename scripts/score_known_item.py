@@ -33,6 +33,7 @@ def per_query(run: pd.DataFrame, queries: pd.DataFrame, catalog: pd.DataFrame, v
     for _, query in queries.iterrows():
         ids = ranked.get(query["query_id"], [])
         same_topic = [int(topic.get(item) == query["topic"]) for item in ids]
+        others = [item for item in ids if item != query["article_id"]]
         rows.append({
             "query_id": query["query_id"],
             "rr": reciprocal_rank(ids, query["article_id"], TOP_K),
@@ -43,6 +44,10 @@ def per_query(run: pd.DataFrame, queries: pd.DataFrame, catalog: pd.DataFrame, v
             "ild": intra_list_diversity(vectors[position.loc[ids].to_numpy()]) if len(ids) > 1 else np.nan,
             "share_spanish": float(np.mean([language.get(item) == "es" for item in ids])) if ids else np.nan,
             "share_scielo": float(np.mean([source.get(item) == "SciELO" for item in ids])) if ids else np.nan,
+            # Sin el artículo de origen: las consultas sobrerrepresentan el español a propósito y el
+            # origen aparece casi siempre, así que incluirlo mediría el diseño de la muestra.
+            "share_spanish_others": float(np.mean([language.get(item) == "es" for item in others])) if others else np.nan,
+            "share_scielo_others": float(np.mean([source.get(item) == "SciELO" for item in others])) if others else np.nan,
         })
     return queries.merge(pd.DataFrame(rows), on="query_id")
 
@@ -83,7 +88,7 @@ def compare(runs: dict[str, pd.DataFrame], queries: pd.DataFrame) -> pd.DataFram
             scores.setdefault(query_id, {})
         ranx_runs.append(Run(scores, name=name))
     report = ranx_compare(qrels, ranx_runs, metrics=[f"mrr@{TOP_K}", f"recall@{TOP_K}"], stat_test="fisher",
-                          max_p=0.05, random_seed=SEED, n_permutations=10_000)
+                          max_p=0.05, random_seed=SEED, n_permutations=100_000)
     rows = []
     for first in report.model_names:
         for second in report.model_names:
@@ -124,6 +129,15 @@ def main() -> None:
         checks.append({"config": name, **ranx_check(run, queries, table)})
 
     pd.concat(tables.values()).to_csv(RUNS_DIR / "known_item_per_query.csv", index=False)
+    catalog_share = {"es": float(catalog["language"].eq("es").mean()), "SciELO": float(catalog["source_database"].eq("SciELO").mean())}
+    exposure = (pd.concat(tables.values()).groupby(["config", "query_language"])[["share_spanish_others", "share_scielo_others"]]
+                .mean().reset_index())
+    exposure["catalog_share_spanish"] = catalog_share["es"]
+    exposure["catalog_share_scielo"] = catalog_share["SciELO"]
+    exposure["ratio_spanish"] = exposure["share_spanish_others"] / catalog_share["es"]
+    exposure["ratio_scielo"] = exposure["share_scielo_others"] / catalog_share["SciELO"]
+    exposure.to_csv(ARTIFACTS_DIR / "evaluation_exposure.csv", index=False)
+    print(exposure.round(3).to_string(index=False))
     overall_frame = pd.concat(overall)[["config", "queries", "mrr_at_10", "recall_at_10", "mrr_gap_es_en", "topic_precision_at_10",
                                         "ild_at_10", "share_spanish_top10", "share_scielo_top10"]]
     overall_frame.to_csv(ARTIFACTS_DIR / "evaluation_metrics.csv", index=False)
@@ -146,7 +160,7 @@ def main() -> None:
         "top_k": TOP_K,
         "seed": SEED,
         "filters": "none",
-        "statistical_test": "paired randomization (Fisher), 10,000 permutations, ranx.compare",
+        "statistical_test": "paired randomization (Fisher), 100,000 permutations, ranx.compare; p-values carry Monte Carlo error of about ±0.001",
         "diversity_vectors": RETRIEVER.model_name,
         "configs": {name: json.loads((RUNS_DIR / f"run_{name}.json").read_text(encoding="utf-8"))
                     for name in runs if (RUNS_DIR / f"run_{name}.json").exists()},
