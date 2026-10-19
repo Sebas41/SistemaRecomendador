@@ -1,18 +1,28 @@
 flowchart LR
-    A[OpenAlex Works API] -->|muestra por campo| B[Descarga reproducible<br/>JSONL comprimido]
-    S[SciELO ArticleMeta API] -->|páginas aleatorias por colección| B
-    B --> C[Normalización y limpieza<br/>idioma, resúmenes, duplicados, fuente]
-    C -->|catálogo y manifiesto| D[Catálogo local Parquet]
-    D --> E[Perfil de tesis<br/>descripción + palabras clave]
-    D --> F[Filtros<br/>campo, año, idioma]
-    F --> G[Artículos candidatos<br/>multilingual-e5-small]
-    E --> H[Recuperador semántico<br/>top 500 por similitud coseno]
-    G --> H
-    H --> I[Reranker bilingüe<br/>consulta y artículo]
-    I --> J[Control de cobertura temática<br/>directa o parcial]
-    F --> K[Artículos candidatos en inglés<br/>TF-IDF unigramas y bigramas]
-    E --> L[Motor de referencia<br/>similitud coseno]
-    K --> L
-    J --> M[Streamlit<br/>resultados y evidencia orientativa]
+    A[OpenAlex Works API] --> B[Descarga y limpieza]
+    S[SciELO ArticleMeta API] --> B
+    B --> D[Catálogo local y manifiesto]
+    D --> V[Vectores E5 de título y resumen]
+    D --> T[Índice TF-IDF en inglés]
+    D --> Y[Índice léxico híbrido multilingüe]
+    U[Estudiante] --> E[Descripción y filtros]
+    E --> H[Recuperación E5: hasta 500 candidatos]
+    V --> H
+    H --> I[Cross-encoder y filtro de puntuación]
+    E --> R[Recuperación léxica: hasta 500 candidatos]
+    Y --> R
+    H --> F[Fusión RRF experimental]
+    R --> F
+    F --> J[Cross-encoder y fusión ponderada]
+    E --> L[Referencia TF-IDF por coseno]
+    T --> L
+    I --> M[Streamlit: resultados]
+    J --> M
     L --> M
-    M --> N[Estudiante<br/>revisa pertinencia científica]
+    M --> P[Selección de un artículo]
+    P --> Q[Coseno entre artículos]
+    V --> Q
+    E -->|conservar filtros| Q
+    Q --> X[Excluir referencia y duplicados]
+    X --> M
+    M --> N[Navegación de sesión y revisión académica]

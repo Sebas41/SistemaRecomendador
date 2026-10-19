@@ -1,28 +1,39 @@
 #!/usr/bin/env python3
-"""Precalcula el índice semántico multilingüe y la referencia TF-IDF."""
+"""Precalcula los vectores bge-m3, el índice léxico bilingüe y la referencia TF-IDF."""
+
+import argparse
+
+import pandas as pd
 
 from sisreco.engine import (
-    _load_reranker,
-    _load_sentence_model,
+    build_hybrid_index,
     build_tfidf_index,
     encode_documents,
-    save_embeddings,
+    load_reranker,
+    load_retriever,
+    save_vectors,
 )
-from sisreco.settings import CATALOG as CATALOG_PATH
+from sisreco.settings import CATALOG, RERANKER, RETRIEVER
 
 
 def main() -> None:
-    if not CATALOG_PATH.exists():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lexical-only", action="store_true",
+                        help="Reconstruye solo los índices léxicos, sin recodificar el catálogo con bge-m3 (unos 70 minutos en GPU).")
+    args = parser.parse_args()
+    if not CATALOG.exists():
         raise SystemExit("Falta el catálogo. Ejecuta primero: python scripts/download_data.py")
-    import pandas as pd
 
-    catalog = pd.read_parquet(CATALOG_PATH)
-    model = _load_sentence_model()
-    vectors = encode_documents(catalog, model=model)
-    save_embeddings(catalog, vectors, model=model)
+    catalog = pd.read_parquet(CATALOG)
     build_tfidf_index(catalog)
-    _load_reranker()  # Descarga el reranker durante la preparación para usar la app sin conexión.
-    print(f"Índices y reranker preparados para {len(catalog):,} artículos.")
+    build_hybrid_index(catalog)
+    if args.lexical_only:
+        print(f"Índices léxicos preparados para {len(catalog):,} artículos.")
+        return
+    model = load_retriever(RETRIEVER)
+    save_vectors(catalog, encode_documents(catalog, RETRIEVER, model=model), RETRIEVER, model=model)
+    load_reranker(RERANKER)  # Descarga el reordenador durante la preparación para usar la app sin conexión.
+    print(f"Vectores, índices léxicos y reordenador preparados para {len(catalog):,} artículos.")
 
 
 if __name__ == "__main__":
