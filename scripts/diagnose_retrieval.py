@@ -15,8 +15,8 @@ from time import perf_counter
 import numpy as np
 import pandas as pd
 
-from evaluate_configs import CONFIGS
-from sisreco.engine import encode_documents, load_hybrid_index, load_retriever, load_vectors, recommend
+from evaluate_configs import CONFIGS, ensure_lexical_index
+from sisreco.engine import encode_documents, load_retriever, load_vectors, recommend
 from sisreco.settings import ARTIFACTS_DIR, CATALOG, DATA_MANIFEST, EVALUATION_DIR, RETRIEVER, SEED, TOP_K
 
 PROFILES = [json.loads(line) for line in (EVALUATION_DIR / "topics.jsonl").read_text(encoding="utf-8").splitlines()]
@@ -58,7 +58,7 @@ def query_diagnostics(catalog, configs: list[str], profile_ids: set[str]):
         retriever_spec, reranker_spec, lexical = CONFIGS[name]
         vectors = load_vectors(catalog, retriever_spec)
         retriever = load_retriever(retriever_spec, local_files_only=True)
-        lexical_index = load_hybrid_index(catalog) if lexical else None
+        lexical_index = ensure_lexical_index(catalog) if lexical else None
         for profile in PROFILES:
             if profile["profile_id"] not in profile_ids:
                 continue

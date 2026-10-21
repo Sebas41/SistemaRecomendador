@@ -12,8 +12,8 @@ import json
 
 import pandas as pd
 
-from evaluate_configs import CONFIGS, ensure_vectors
-from sisreco.engine import load_hybrid_index, load_retriever, recommend
+from evaluate_configs import CONFIGS, ensure_lexical_index, ensure_vectors
+from sisreco.engine import load_retriever, recommend
 from sisreco.settings import ARTIFACTS_DIR, CATALOG, EVALUATION_DIR, SEED
 
 TOP_RATED = 5
@@ -31,7 +31,7 @@ def main() -> None:
     for config in (args.reference, args.chosen):
         retriever_spec, reranker_spec, lexical = CONFIGS[config]
         vectors = ensure_vectors(catalog, retriever_spec)
-        lexical_index = load_hybrid_index(catalog) if lexical else None
+        lexical_index = ensure_lexical_index(catalog) if lexical else None
         retriever = load_retriever(retriever_spec)
         for profile in profiles:
             for language in ("es", "en"):

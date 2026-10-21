@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Ejecuta las consultas de ítem conocido con las configuraciones comparadas.
 
-Las tres configuraciones cambian una cosa a la vez respecto de la anterior:
+Cada configuración cambia una sola cosa respecto de la que la precede:
 A (referencia) multilingual-e5-small + reordenador mMARCO; B cambia el recuperador
 por bge-m3 sin reordenador; C añade a B el reordenador bge-reranker-v2-m3 con 512
 tokens; D amplía a 1.024 los tokens que lee ese reordenador; E arma la lista corta de C
@@ -15,7 +15,7 @@ import time
 
 import pandas as pd
 
-from sisreco.engine import (encode_documents, load_hybrid_index, load_retriever, load_vectors, model_revision, recommend,
+from sisreco.engine import (build_hybrid_index, encode_documents, load_hybrid_index, load_retriever, load_vectors, model_revision, recommend,
                             save_vectors)
 from sisreco.settings import (ARTIFACTS_DIR, CATALOG, EVALUATION_DIR, HYBRID_RRF_K, RERANKER, RETRIEVER, TOP_K, RerankerSpec,
                               RetrieverSpec)
@@ -51,6 +51,15 @@ def ensure_vectors(catalog: pd.DataFrame, spec: RetrieverSpec):
         return load_vectors(catalog, spec)
 
 
+def ensure_lexical_index(catalog: pd.DataFrame):
+    """El índice léxico bilingüe solo lo usa la configuración E; se construye al evaluarla."""
+    try:
+        return load_hybrid_index(catalog)
+    except FileNotFoundError:
+        build_hybrid_index(catalog)
+        return load_hybrid_index(catalog)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configs", nargs="+", choices=sorted(CONFIGS), default=sorted(CONFIGS))
@@ -62,7 +71,7 @@ def main() -> None:
     for name in args.configs:
         retriever_spec, reranker_spec, lexical = CONFIGS[name]
         vectors = ensure_vectors(catalog, retriever_spec)
-        lexical_index = load_hybrid_index(catalog) if lexical else None
+        lexical_index = ensure_lexical_index(catalog) if lexical else None
         retriever = load_retriever(retriever_spec)
         started = time.time()
         rows = []

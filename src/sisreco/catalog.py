@@ -207,7 +207,7 @@ def _raw_frames(raw_path: Path | None = RAW_CATALOG) -> tuple[list[Path], list[p
     raw_paths = [path for path in (raw_path, RAW_SCIELO_CATALOG) if path and path.exists()]
     if not raw_paths:
         raise FileNotFoundError(
-            f"No se encontró un catálogo crudo. Ejecuta: python scripts/download_data.py"
+            "No se encontró un catálogo crudo. Ejecuta: python scripts/download_data.py"
         )
     return raw_paths, [_read_raw_jsonl(path) for path in raw_paths]
 
