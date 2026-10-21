@@ -55,7 +55,7 @@ def text_or_default(value, default="") -> str:
 
 
 st.title("Ciencia a tu tesis")
-st.write("Describe tu investigación y elige un artículo para descubrir otras lecturas similares.")
+st.write("Describe tu proyecto de grado o tesis y recibe artículos científicos para empezar tu revisión bibliográfica. Desde cada resultado puedes explorar lecturas similares.")
 st.caption("La afinidad temática orienta la búsqueda; cada artículo requiere tu revisión académica.")
 
 try:
@@ -66,7 +66,7 @@ except (FileNotFoundError, ValueError, OSError) as exc:
     st.code("python scripts/download_data.py\npython scripts/build_index.py", language="bash")
     st.stop()
 
-# Un catálogo actualizado invalida las selecciones y sus resultados almacenados.
+# Si el archivo del catálogo cambia en disco, se descartan las selecciones y los resultados guardados en la sesión.
 if st.session_state.get("catalog_version") != catalog_version:
     for name in ("current_view", "search_view", "view_history", "navigation"):
         st.session_state.pop(name, None)
@@ -105,7 +105,14 @@ summary[1].metric("Campos académicos", f"{catalog['field'].nunique():,}")
 summary[2].metric("Consultas", "Español e inglés")
 if DATA_MANIFEST.exists():
     manifest = json.loads(DATA_MANIFEST.read_text(encoding="utf-8"))
-    st.caption(f"Fuentes: OpenAlex y SciELO · catálogo preparado el {manifest.get('retrieved_at_utc', '')[:10]}.")
+    st.caption(f"Fuentes: OpenAlex y SciELO · datos extraídos el {(manifest.get('retrieved_at_utc') or '')[:10]}.")
+# Limitaciones medidas en la evaluación que cambian cómo leer los resultados.
+spanish_share = catalog["language"].eq("es").mean()
+st.info(
+    f"Solo el {spanish_share * 100:.1f} %".replace(".", ",") + " del catálogo está en español. Las búsquedas en español pueden devolver "
+    "artículos en inglés, y el sistema tiende a priorizar artículos en el idioma de la consulta aunque haya "
+    "otros más cercanos al tema. Los resultados son afines por tema; no indican la calidad del estudio."
+)
 
 if submitted:
     full_query = build_query(query, keywords)

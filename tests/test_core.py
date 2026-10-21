@@ -275,7 +275,7 @@ def make_scielo_record():
     }
 
 
-def test_scielo_normalizes_legacy_articlemeta_fields():
+def test_scielo_normalizes_articlemeta_json_fields():
     article = normalize_article(
         make_scielo_record(),
         journal_subject_by_issn={"1234-5678": "Health Sciences"},
