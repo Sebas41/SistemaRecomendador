@@ -49,5 +49,5 @@ El artículo no aporta al proyecto. Coincide con el perfil solo por una palabra 
 
 1. Lee la descripción del perfil completa antes de calificar sus artículos.
 2. Califica todos los artículos de un perfil antes de pasar al siguiente, para mantener el mismo criterio.
-3. No consultes la llave de las configuraciones (`artifacts/human_ratings_key.json`) antes de terminar.
+3. No consultes la llave de las configuraciones (`artifacts/human_ratings_key.csv`) antes de terminar.
 4. Si dos personas califican el mismo archivo, hazlo por separado y compara después; las diferencias se resuelven conversando y se registra el valor acordado.

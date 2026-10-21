@@ -1,28 +1,43 @@
-flowchart LR
-    A[OpenAlex Works API] --> B[Descarga y limpieza]
-    S[SciELO ArticleMeta API] --> B
-    B --> D[Catálogo local y manifiesto]
-    D --> V[Vectores E5 de título y resumen]
-    D --> T[Índice TF-IDF en inglés]
-    D --> Y[Índice léxico híbrido multilingüe]
-    U[Estudiante] --> E[Descripción y filtros]
-    E --> H[Recuperación E5: hasta 500 candidatos]
-    V --> H
-    H --> I[Cross-encoder y filtro de puntuación]
-    E --> R[Recuperación léxica: hasta 500 candidatos]
-    Y --> R
-    H --> F[Fusión RRF experimental]
-    R --> F
-    F --> J[Cross-encoder y fusión ponderada]
-    E --> L[Referencia TF-IDF por coseno]
-    T --> L
-    I --> M[Streamlit: resultados]
-    J --> M
-    L --> M
-    M --> P[Selección de un artículo]
-    P --> Q[Coseno entre artículos]
-    V --> Q
-    E -->|conservar filtros| Q
-    Q --> X[Excluir referencia y duplicados]
-    X --> M
-    M --> N[Navegación de sesión y revisión académica]
+flowchart TB
+    subgraph fuentes["1 · Fuente de datos"]
+        OA[OpenAlex<br/>26 campos]
+        SC[SciELO ArticleMeta<br/>19 colecciones]
+    end
+
+    subgraph proc["2 · Procesamiento y representación"]
+        LIM[Limpieza y normalización<br/>texto, idioma, duplicados]
+        CAT[(Catálogo<br/>108.252 artículos)]
+        REP[Representación de artículos<br/>título · palabras clave · topic · resumen<br/>→ vectores bge-m3]
+        USR[Representación del usuario<br/>descripción + palabras clave<br/>→ vector de consulta]
+    end
+
+    subgraph motor["3 · Motor de recomendación"]
+        FIL[Filtros<br/>campo · años · idioma]
+        REC[Recuperación por similitud<br/>coseno, 100 candidatos]
+        RER[Reordenamiento<br/>bge-reranker-v2-m3]
+        TOP[Top 10]
+        SIM[Artículos similares<br/>coseno entre artículos]
+        TFI[TF-IDF<br/>referencia en inglés]
+    end
+
+    subgraph pres["4 · Capa de presentación"]
+        APP[Aplicación Streamlit]
+        EST([Estudiante<br/>revisa los resultados])
+    end
+
+    OA -->|metadatos y resúmenes| LIM
+    SC -->|metadatos y resúmenes| LIM
+    LIM -->|artículos válidos| CAT
+    CAT -->|texto indexado| REP
+    CAT -->|metadatos| FIL
+    EST <-->|describe su proyecto · revisa los resultados| APP
+    APP -->|descripción y filtros| USR
+    USR -->|vector de consulta| REC
+    REP -->|vectores| REC
+    FIL -->|candidatos permitidos| REC
+    REC -->|lista corta| RER
+    RER -->|puntaje de pertinencia| TOP
+    APP <-->|consulta en inglés · top 10 léxico| TFI
+    APP <-->|artículo elegido · lecturas similares| SIM
+    REP -->|vectores| SIM
+    TOP -->|artículos y fragmento del resumen| APP
