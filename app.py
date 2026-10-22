@@ -9,10 +9,9 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from sisreco.engine import (
-    _load_reranker, _load_sentence_model, load_embeddings, recommend, recommend_similar,
-)
-from sisreco.settings import CATALOG, DATA_MANIFEST, EMBEDDINGS, EMBEDDINGS_MANIFEST
+from sisreco import settings
+from sisreco.engine import build_query, load_reranker, load_retriever, load_vectors, recommend, recommend_similar
+from sisreco.settings import CATALOG, DATA_MANIFEST
 
 st.set_page_config(page_title="Ciencia a tu tesis", page_icon="📚", layout="wide")
 
@@ -28,22 +27,23 @@ def load_catalog(version: tuple[int, int]) -> pd.DataFrame:
 
 
 @st.cache_resource
-def load_model():
-    return _load_sentence_model(local_files_only=True)
+def cached_retriever():
+    return load_retriever(settings.RETRIEVER, local_files_only=True)
 
 
 @st.cache_resource
-def load_reranker():
-    return _load_reranker(local_files_only=True)
+def cached_reranker():
+    return load_reranker(settings.RERANKER, local_files_only=True)
 
 
 @st.cache_resource
-def load_vectors(catalog_version, vector_version, manifest_version):
-    return load_embeddings(load_catalog(catalog_version))
+def cached_vectors(catalog_version, vector_version, manifest_version):
+    return load_vectors(load_catalog(catalog_version), settings.RETRIEVER)
 
 
 def current_vectors():
-    return load_vectors(file_version(CATALOG), file_version(EMBEDDINGS), file_version(EMBEDDINGS_MANIFEST))
+    vectors_path = settings.RETRIEVER.vectors_path
+    return cached_vectors(file_version(CATALOG), file_version(vectors_path), file_version(vectors_path.with_suffix(".json")))
 
 
 def navigate(action: str, article_id: str | None = None):
@@ -55,7 +55,7 @@ def text_or_default(value, default="") -> str:
 
 
 st.title("Ciencia a tu tesis")
-st.write("Describe tu investigación y elige un artículo para descubrir otras lecturas similares.")
+st.write("Describe tu proyecto de grado o tesis y recibe artículos científicos para empezar tu revisión bibliográfica. Desde cada resultado puedes explorar lecturas similares.")
 st.caption("La afinidad temática orienta la búsqueda; cada artículo requiere tu revisión académica.")
 
 try:
@@ -66,7 +66,7 @@ except (FileNotFoundError, ValueError, OSError) as exc:
     st.code("python scripts/download_data.py\npython scripts/build_index.py", language="bash")
     st.stop()
 
-# Un catálogo actualizado invalida las selecciones y sus resultados almacenados.
+# Si el archivo del catálogo cambia en disco, se descartan las selecciones y los resultados guardados en la sesión.
 if st.session_state.get("catalog_version") != catalog_version:
     for name in ("current_view", "search_view", "view_history", "navigation"):
         st.session_state.pop(name, None)
@@ -93,16 +93,9 @@ with st.sidebar:
             st.caption(f"Año disponible: {min_available}")
         language_label = st.selectbox("Idioma del artículo", ["Todos", "Inglés", "Español"], key="language")
         language = {"Todos": "Todos", "Inglés": "en", "Español": "es"}[language_label]
-        engine_label = st.radio(
-            "Método de búsqueda",
-            ["Semántico bilingüe", "Híbrido experimental", "TF-IDF (inglés)"], key="engine",
-        )
-        engine = {
-            "Semántico bilingüe": "semantico",
-            "Híbrido experimental": "hibrido",
-            "TF-IDF (inglés)": "tfidf",
-        }[engine_label]
-        top_k = st.radio("Resultados", [5, 10], horizontal=True, key="top_k")
+        engine_label = st.radio("Método de búsqueda", ["Semántico bilingüe", "TF-IDF (inglés)"], key="engine")
+        engine = {"Semántico bilingüe": "semantico", "TF-IDF (inglés)": "tfidf"}[engine_label]
+        top_k = st.radio("Resultados", [10, 5], horizontal=True, key="top_k")
         submitted = st.form_submit_button("Buscar artículos", type="primary", use_container_width=True)
     st.caption("Ver similares conserva los filtros de la búsqueda inicial. Pulsa Buscar para aplicar cambios.")
 
@@ -112,10 +105,17 @@ summary[1].metric("Campos académicos", f"{catalog['field'].nunique():,}")
 summary[2].metric("Consultas", "Español e inglés")
 if DATA_MANIFEST.exists():
     manifest = json.loads(DATA_MANIFEST.read_text(encoding="utf-8"))
-    st.caption(f"Fuentes: OpenAlex y SciELO · catálogo preparado el {manifest.get('retrieved_at_utc', '')[:10]}.")
+    st.caption(f"Fuentes: OpenAlex y SciELO · datos extraídos el {(manifest.get('retrieved_at_utc') or '')[:10]}.")
+# Limitaciones medidas en la evaluación que cambian cómo leer los resultados.
+spanish_share = catalog["language"].eq("es").mean()
+st.info(
+    f"Solo el {spanish_share * 100:.1f} %".replace(".", ",") + " del catálogo está en español. Las búsquedas en español pueden devolver "
+    "artículos en inglés, y el sistema tiende a priorizar artículos en el idioma de la consulta aunque haya "
+    "otros más cercanos al tema. Los resultados son afines por tema; no indican la calidad del estudio."
+)
 
 if submitted:
-    full_query = " ".join(part.strip() for part in (query, keywords) if part.strip())
+    full_query = build_query(query, keywords)
     if len(query.split()) < 5:
         st.warning("Escribe al menos cinco palabras en la descripción de tu investigación.")
     elif engine == "tfidf" and language == "es":
@@ -125,11 +125,12 @@ if submitted:
                        language=language, top_k=top_k)
         try:
             with st.spinner("Buscando artículos relacionados..."):
+                semantic = engine == "semantico"
                 results = recommend(
                     catalog, full_query, engine=engine, **options,
-                    embeddings=current_vectors() if engine != "tfidf" else None,
-                    model=load_model() if engine != "tfidf" else None,
-                    reranker=load_reranker() if engine in {"semantico", "hibrido"} else None,
+                    vectors=current_vectors() if semantic else None,
+                    retriever=cached_retriever() if semantic else None,
+                    reranker=cached_reranker() if semantic else None,
                 )
             view = dict(mode="query", query=full_query, engine=engine, options=options, results=results)
             st.session_state["current_view"] = view
@@ -153,7 +154,7 @@ if navigation and "current_view" in st.session_state:
         previous = st.session_state["current_view"]
         try:
             with st.spinner("Buscando lecturas similares al artículo elegido..."):
-                results = recommend_similar(catalog, article_id, embeddings=current_vectors(), **previous["options"])
+                results = recommend_similar(catalog, article_id, vectors=current_vectors(), **previous["options"])
             seed = catalog.loc[catalog["id"].eq(article_id)].iloc[0]
             st.session_state["view_history"] = (history + [previous])[-10:]
             st.session_state["current_view"] = dict(
@@ -200,7 +201,6 @@ else:
                 source_label += f" ({collection})"
             score_label = (
                 "Similitud con el artículo" if is_similar else
-                "Puntuación híbrida experimental" if view["engine"] == "hibrido" else
                 "Relevancia del modelo" if view["engine"] == "semantico" else
                 "Similitud TF-IDF"
             )

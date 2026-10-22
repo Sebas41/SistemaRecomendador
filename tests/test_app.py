@@ -8,6 +8,20 @@ from streamlit.testing.v1 import AppTest
 
 import sisreco.engine as engine
 import sisreco.settings as settings
+from sisreco.settings import RetrieverSpec
+
+
+def use_fixture_settings(tmp_path, monkeypatch, catalog_path, vectors):
+    """Apunta la app a un catálogo y un índice de prueba, sin cargar modelos reales."""
+    vectors_path = tmp_path / "vectors.npy"
+    vectors_path.write_text("fixture")
+    vectors_path.with_suffix(".json").write_text("fixture")
+    monkeypatch.setattr(settings, "CATALOG", catalog_path)
+    monkeypatch.setattr(settings, "DATA_MANIFEST", tmp_path / "absent.json")
+    monkeypatch.setattr(settings, "RETRIEVER", RetrieverSpec("fake", max_seq_length=512, vectors_path=vectors_path))
+    monkeypatch.setattr(engine, "load_vectors", lambda *_: vectors)
+    monkeypatch.setattr(engine, "load_retriever", lambda *_, **__: object())
+    monkeypatch.setattr(engine, "load_reranker", lambda *_, **__: object())
 
 
 def test_explore_similar_keeps_results_filters_and_back_navigation(tmp_path, monkeypatch):
@@ -21,15 +35,7 @@ def test_explore_similar_keeps_results_filters_and_back_navigation(tmp_path, mon
     ])
     catalog_path = tmp_path / "catalog.parquet"
     frame.to_parquet(catalog_path)
-    monkeypatch.setattr(settings, "CATALOG", catalog_path)
-    monkeypatch.setattr(settings, "DATA_MANIFEST", tmp_path / "absent.json")
-    for name in ("EMBEDDINGS", "EMBEDDINGS_MANIFEST"):
-        path = tmp_path / name
-        path.write_text("fixture")
-        monkeypatch.setattr(settings, name, path)
-    monkeypatch.setattr(engine, "load_embeddings", lambda _: np.array([[1, 0], [.9, .1], [.1, .9]], dtype=np.float32))
-    monkeypatch.setattr(engine, "_load_sentence_model", lambda **_: object())
-    monkeypatch.setattr(engine, "_load_reranker", lambda **_: object())
+    use_fixture_settings(tmp_path, monkeypatch, catalog_path, np.array([[1, 0], [.9, .1], [.1, .9]], dtype=np.float32))
     calls = []
 
     def search(catalog, query, **kwargs):
@@ -69,27 +75,26 @@ def test_explore_similar_keeps_results_filters_and_back_navigation(tmp_path, mon
     assert not app.exception
 
 
-def test_app_exposes_hybrid_as_experimental_method(tmp_path, monkeypatch):
+def test_app_joins_keywords_and_passes_the_selected_engine(tmp_path, monkeypatch):
     frame = pd.DataFrame([dict(id="solar", title="Solar forecasting", abstract="Solar energy forecast research.", authors=[], year=2022, language="en", field="Energy", doi=None)])
     catalog_path = tmp_path / "catalog.parquet"
     frame.to_parquet(catalog_path)
-    monkeypatch.setattr(settings, "CATALOG", catalog_path)
-    monkeypatch.setattr(settings, "DATA_MANIFEST", tmp_path / "absent.json")
-    for name in ("EMBEDDINGS", "EMBEDDINGS_MANIFEST"):
-        path = tmp_path / name
-        path.write_text("fixture")
-        monkeypatch.setattr(settings, name, path)
-    monkeypatch.setattr(engine, "load_embeddings", lambda _: np.array([[1, 0]], dtype=np.float32))
-    monkeypatch.setattr(engine, "_load_sentence_model", lambda **_: object())
-    monkeypatch.setattr(engine, "_load_reranker", lambda **_: object())
+    use_fixture_settings(tmp_path, monkeypatch, catalog_path, np.array([[1, 0]], dtype=np.float32))
     seen = []
+
     def search(catalog, query, **kwargs):
-        seen.append(kwargs["engine"])
+        seen.append((query, kwargs["engine"], kwargs["top_k"]))
         return catalog.assign(score=.1, evidence="")
+
     monkeypatch.setattr(engine, "recommend", search)
     app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
-    app.radio(key="engine").set_value("Híbrido experimental")
     app.text_area(key="query").set_value("Solar energy forecasting for electricity research")
+    app.text_input(key="keywords").set_value("photovoltaic, forecasting")
     next(button for button in app.button if button.label == "Buscar artículos").click().run()
-    assert seen == ["hibrido"]
+    app.radio(key="engine").set_value("TF-IDF (inglés)")
+    next(button for button in app.button if button.label == "Buscar artículos").click().run()
+    assert seen == [
+        ("Solar energy forecasting for electricity research. Palabras clave: photovoltaic, forecasting", "semantico", 10),
+        ("Solar energy forecasting for electricity research. Palabras clave: photovoltaic, forecasting", "tfidf", 10),
+    ]
     assert not app.exception

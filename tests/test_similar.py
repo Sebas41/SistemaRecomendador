@@ -1,10 +1,15 @@
 """Regresiones de recomendación por artículo y casos sin vocabulario."""
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
 
 import sisreco.engine as engine
+from sisreco.settings import RerankerSpec, RetrieverSpec
+
+SPEC = RetrieverSpec("fake", max_seq_length=512, vectors_path=Path("unused.npy"))
 
 
 class FakeSemanticModel:
@@ -35,14 +40,14 @@ def vectors():
 def test_similar_uses_seed_content_and_positional_alignment_without_models(monkeypatch):
     def no_model(*args, **kwargs):
         raise AssertionError("Item recommendations must reuse the existing vectors")
-    monkeypatch.setattr(engine, "_load_sentence_model", no_model)
-    monkeypatch.setattr(engine, "_load_reranker", no_model)
+    monkeypatch.setattr(engine, "load_retriever", no_model)
+    monkeypatch.setattr(engine, "load_reranker", no_model)
     c = small_catalog()
-    first = engine.recommend_similar(c, "solar", embeddings=vectors(), top_k=10)
+    first = engine.recommend_similar(c, "solar", vectors=vectors(), top_k=10)
     assert first.id.tolist() == ["wind", "spanish", "health"]
     assert first.score.is_monotonic_decreasing
     assert first.iloc[0].score == pytest.approx(4 / np.sqrt(17))
-    second = engine.recommend_similar(c, "health", embeddings=vectors(), top_k=2)
+    second = engine.recommend_similar(c, "health", vectors=vectors(), top_k=2)
     assert second.id.tolist() == ["spanish", "wind"]
     assert c.index.tolist() == [30, 10, 80, 20]  # The caller's frame is not mutated.
 
@@ -54,17 +59,17 @@ def test_similar_excludes_seed_and_duplicate_doi_or_title():
     duplicate_title = {**c.iloc[0].to_dict(), "id": "copy_title", "title": "SOLAR POWER—FORECASTING!", "doi": None}
     c = pd.concat([c, pd.DataFrame([duplicate_doi, duplicate_title])], ignore_index=True)
     v = np.vstack([vectors(), [3, 0], [3, 0]])
-    result = engine.recommend_similar(c, "solar", embeddings=v, top_k=10)
+    result = engine.recommend_similar(c, "solar", vectors=v, top_k=10)
     assert set(result.id) == {"wind", "spanish", "health"}
 
 
 def test_similar_filters_and_returns_fewer_than_requested():
     c = small_catalog()
-    result = engine.recommend_similar(c, "solar", embeddings=vectors(), fields=["Energy"],
+    result = engine.recommend_similar(c, "solar", vectors=vectors(), fields=["Energy"],
                                       language="es", min_year=2023, max_year=2024, top_k=10)
     assert result.id.tolist() == ["spanish"]
     # Reference need not pass the candidate filters.
-    empty = engine.recommend_similar(c, "solar", embeddings=vectors(), fields=["Medicine"], language="es")
+    empty = engine.recommend_similar(c, "solar", vectors=vectors(), fields=["Medicine"], language="es")
     assert empty.empty
     assert {"score", "evidence"}.issubset(empty.columns)
 
@@ -77,19 +82,19 @@ def test_similar_filters_and_returns_fewer_than_requested():
 ])
 def test_similar_validates_inputs(kwargs, message):
     with pytest.raises(ValueError, match=message):
-        engine.recommend_similar(small_catalog(), embeddings=vectors(), **kwargs)
+        engine.recommend_similar(small_catalog(), vectors=vectors(), **kwargs)
 
 
 def test_similar_rejects_misaligned_and_invalid_vectors():
     c = small_catalog()
     for bad in (np.ones((2, 2)), np.ones(4)):
         with pytest.raises(ValueError, match="vectores"):
-            engine.recommend_similar(c, "solar", embeddings=bad)
+            engine.recommend_similar(c, "solar", vectors=bad)
     v = vectors(); v[0] = 0
     with pytest.raises(ValueError, match="vector válido"):
-        engine.recommend_similar(c, "solar", embeddings=v)
+        engine.recommend_similar(c, "solar", vectors=v)
     v = vectors(); v[1] = np.nan; v[2] = 0
-    result = engine.recommend_similar(c, "solar", embeddings=v)
+    result = engine.recommend_similar(c, "solar", vectors=v)
     assert result.id.tolist() == ["health"]
 
 
@@ -122,28 +127,35 @@ def test_tfidf_rejects_outdated_index(lexical_catalog):
         engine.recommend(changed, "solar solar solar solar solar", engine="tfidf")
 
 
-def test_hybrid_index_and_rrf_recommendation(tmp_path, monkeypatch):
-    c = small_catalog().copy()
+def _hybrid_index(c, tmp_path, monkeypatch):
     for name, filename in (("HYBRID_VECTORIZER", "hybrid.joblib"), ("HYBRID_MATRIX", "hybrid.npz"), ("HYBRID_MANIFEST", "hybrid.json")):
         monkeypatch.setattr(engine, name, tmp_path / filename)
     engine.build_hybrid_index(c)
-    vectorizer, matrix, manifest = engine.load_hybrid_index(c)
+    return engine.load_hybrid_index(c)
+
+
+def test_hybrid_index_and_rrf_recommendation(tmp_path, monkeypatch):
+    c = small_catalog().copy()
+    vectorizer, matrix = _hybrid_index(c, tmp_path, monkeypatch)
     assert matrix.shape[0] == len(c)
-    assert manifest["catalog_ids"] == c["id"].tolist()
     assert vectorizer.transform(["solar energy forecast"]).nnz > 0
 
     class StableReranker:
         def predict(self, pairs, **kwargs):
             return np.asarray([float(len(passage)) for _, passage in pairs])
 
+    details = {}
     result = engine.recommend(
-        c, "solar energy forecasting research project", engine="hibrido", top_k=2,
-        embeddings=vectors(), model=FakeSemanticModel(), reranker=StableReranker(),
-        generate_evidence=False, rerank_candidates=2,
+        c, "solar energy forecasting research project", top_k=2, vectors=vectors(), retriever=FakeSemanticModel(),
+        retriever_spec=SPEC, reranker=StableReranker(), reranker_spec=RerankerSpec("fake", 512, candidates=2),
+        lexical_index=(vectorizer, matrix), generate_evidence=False, diagnostics=details,
     )
     assert len(result) == 2
-    assert {"semantic_score", "lexical_score", "retrieval_score", "reranker_score", "score"} <= set(result.columns)
+    assert {"retrieval_score", "score"} <= set(result.columns)
     assert result.score.is_monotonic_decreasing
+    assert details["lexical_ids"] and details["fused_ids"]
+    with pytest.raises(ValueError, match="no coincide"):
+        engine.load_hybrid_index(c.assign(id=c["id"] + "-changed"))
 
 
 def test_rrf_deduplicates_and_validates_weights():
@@ -156,23 +168,23 @@ def test_rrf_deduplicates_and_validates_weights():
 
 def test_hybrid_keeps_semantic_results_when_lexical_query_is_oov(tmp_path, monkeypatch):
     c = small_catalog().copy()
-    for name, filename in (("HYBRID_VECTORIZER", "hybrid.joblib"), ("HYBRID_MATRIX", "hybrid.npz"), ("HYBRID_MANIFEST", "hybrid.json")):
-        monkeypatch.setattr(engine, name, tmp_path / filename)
-    engine.build_hybrid_index(c)
+    index = _hybrid_index(c, tmp_path, monkeypatch)
     result = engine.recommend(
-        c, "zzzz qqqq xxxxx yyyyy vvvvv", engine="hibrido_sin_rerank", top_k=2,
-        embeddings=vectors(), model=FakeSemanticModel(), generate_evidence=False,
+        c, "zzzz qqqq xxxxx yyyyy vvvvv", top_k=2, vectors=vectors(), retriever=FakeSemanticModel(),
+        retriever_spec=SPEC, reranker_spec=None, lexical_index=index, generate_evidence=False,
     )
     assert len(result) == 2
 
 
-def test_diagnostics_record_candidates_and_negative_reranker_ids():
+def test_diagnostics_record_each_stage_and_keep_a_full_list_with_negative_scores():
     class NegativeReranker:
         def predict(self, pairs, **kwargs):
             return np.asarray([-1.0] * len(pairs), dtype=np.float32)
+
     details = {}
-    result = engine.recommend(small_catalog(), "solar energy forecasting research project", embeddings=vectors(),
-        model=FakeSemanticModel(), reranker=NegativeReranker(), generate_evidence=False, diagnostics=details)
-    assert result.empty
-    assert details["semantic_candidate_ids"]
-    assert details["excluded_negative_ids"] == details["semantic_candidate_ids"]
+    result = engine.recommend(small_catalog(), "solar energy forecasting research project", vectors=vectors(),
+                              retriever=FakeSemanticModel(), retriever_spec=SPEC, reranker=NegativeReranker(),
+                              reranker_spec=RerankerSpec("fake", 512, candidates=10), generate_evidence=False,
+                              diagnostics=details)
+    assert len(result) == 4
+    assert details["dense_ids"] and details["final_ids"] == result["id"].tolist()

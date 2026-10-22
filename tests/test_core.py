@@ -5,9 +5,12 @@ import pandas as pd
 import pytest
 
 import sisreco.openalex as openalex
-from sisreco.catalog import clean_catalog
-from sisreco.engine import recommend
-from sisreco.evaluation import ndcg_at_k, precision_at_k
+from pathlib import Path
+
+from sisreco.catalog import clean_abstract, clean_catalog, clean_text, prepare_texts
+from sisreco.engine import article_text, build_query, recommend
+from sisreco.evaluation import intra_list_diversity, ndcg_at_k, precision_at_k, recall_at_k, reciprocal_rank
+from sisreco.settings import RerankerSpec, RetrieverSpec
 from sisreco.openalex import reconstruct_abstract, valid_work
 from sisreco.scielo import journal_subjects, normalize_article, sample_offsets
 
@@ -94,17 +97,20 @@ def test_clean_catalog_removes_duplicate_titles():
     assert cleaned["id"].tolist() == ["W1", "W2", "W4"]
 
 
+SPEC = RetrieverSpec("fake", max_seq_length=512, vectors_path=Path("unused.npy"))
+RERANK = RerankerSpec("fake", max_length=512, candidates=10)
+
+
 class FakeModel:
     def encode(self, inputs, **kwargs):
         if isinstance(inputs, str):
             inputs = [inputs]
-        vectors = []
-        for text in inputs:
-            vectors.append([1.0, 0.0] if "solar" in text.lower() else [0.0, 1.0])
-        return np.asarray(vectors, dtype=np.float32)
+        return np.asarray([[1.0, 0.0] if "solar" in text.lower() else [0.0, 1.0] for text in inputs], dtype=np.float32)
 
 
 class FakeReranker:
+    """Puntaje alto para pasajes con «business process» o «solar energy»; negativo para el resto."""
+
     def predict(self, pairs, **kwargs):
         return np.asarray([
             2.0 if any(term in passage.lower() for term in ("business process", "solar energy")) else -2.0
@@ -112,107 +118,138 @@ class FakeReranker:
         ], dtype=np.float32)
 
 
+def run(catalog, query, vectors, **kwargs):
+    kwargs.setdefault("reranker_spec", RERANK)
+    kwargs.setdefault("reranker", FakeReranker())
+    return recommend(catalog, query, vectors=vectors, retriever=FakeModel(), retriever_spec=SPEC,
+                     generate_evidence=False, **kwargs)
+
+
+def test_article_text_joins_title_keywords_topic_and_abstract_without_field():
+    row = {"title": "Solar forecasting", "keywords": np.array(["solar", "machine learning"]), "topic": "Energy forecasting",
+           "abstract": "We forecast solar output.", "field": "Energy"}
+    assert article_text(row) == "Solar forecasting. solar, machine learning. Energy forecasting. We forecast solar output."
+
+
+def test_build_query_appends_keywords_only_when_present():
+    assert build_query("Quiero estudiar energía solar", "pronóstico, redes") == "Quiero estudiar energía solar. Palabras clave: pronóstico, redes"
+    assert build_query("Quiero estudiar energía solar", "  ") == "Quiero estudiar energía solar"
+
+
 def test_semantic_recommender_ranks_and_filters_articles():
     catalog = make_catalog().iloc[:2].reset_index(drop=True)
-    embeddings = np.asarray([[1, 0], [0, 1]], dtype=np.float32)
-    results = recommend(
-        catalog,
-        "Research project about solar energy forecasting",
-        embeddings=embeddings,
-        model=FakeModel(),
-        reranker=FakeReranker(),
-        fields=["Energy"],
-        min_year=2022,
-        max_year=2022,
-        top_k=5,
-        generate_evidence=False,
-    )
+    results = run(catalog, "Research project about solar energy forecasting", np.asarray([[1, 0], [0, 1]], dtype=np.float32),
+                  fields=["Energy"], min_year=2022, max_year=2022)
     assert results["id"].tolist() == ["W1"]
     assert np.isclose(results.iloc[0]["score"], 2.0)
-    assert np.isclose(results.iloc[0]["semantic_score"], 1.0)
+    assert np.isclose(results.iloc[0]["retrieval_score"], 1.0)
 
 
-def test_semantic_reranker_removes_polysemy_mismatch():
+def test_reranker_moves_the_pertinent_candidate_to_the_top():
     catalog = pd.DataFrame([
-        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "AI for masonry architecture", "abstract": "Masonry structural behavior in physical buildings."},
-        {**make_catalog().iloc[0].to_dict(), "id": "business", "title": "AI agents for enterprise business process architecture", "abstract": "Enterprise software and business process automation."},
+        {**make_catalog().iloc[0].to_dict(), "id": "building", "title": "AI for masonry architecture"},
+        {**make_catalog().iloc[0].to_dict(), "id": "business", "title": "AI agents for enterprise business process architecture"},
     ])
-    vectors = np.asarray([[0, 1], [1, 0]], dtype=np.float32)
-    results = recommend(
-        catalog,
-        "agentes de inteligencia artificial para arquitectura empresarial",
-        embeddings=vectors,
-        model=FakeModel(),
-        reranker=FakeReranker(),
-        generate_evidence=False,
-    )
-    assert results["id"].tolist() == ["business"]
+    # El recuperador prefiere el artículo de mampostería; el reordenador debe corregirlo.
+    results = run(catalog, "agentes de inteligencia artificial para arquitectura empresarial",
+                  np.asarray([[0, 1], [1, 0]], dtype=np.float32))
+    assert results["id"].tolist() == ["business", "building"]
 
 
-def test_semantic_recommender_abstains_when_all_candidates_are_irrelevant():
-    catalog = make_catalog().iloc[:1].reset_index(drop=True)
-    vectors = np.asarray([[1, 0]], dtype=np.float32)
-    class IrrelevantReranker:
-        def predict(self, pairs, **kwargs):
-            return np.full(len(pairs), -1.0, dtype=np.float32)
-
-    results = recommend(
-        catalog,
-        "Research project about solar energy",
-        embeddings=vectors,
-        model=FakeModel(),
-        reranker=IrrelevantReranker(),
-        generate_evidence=False,
-    )
-    assert results.empty
+def test_recommender_returns_fixed_top_k_even_when_reranker_scores_are_negative():
+    catalog = pd.concat([make_catalog().iloc[[0]].assign(id=f"W{i}", title=f"Wind turbine study number {i}")
+                         for i in range(12)], ignore_index=True)
+    vectors = np.tile(np.asarray([[0, 1]], dtype=np.float32), (12, 1))
+    results = run(catalog, "Research project about solar energy", vectors, top_k=10)
+    assert len(results) == 10
+    assert (results["score"] < 0).all()
 
 
-@pytest.mark.parametrize("query", [
-    "agentes de inteligencia artificial para la arquitectura empresarial",
-    "mobile applications for diabetes patient care",
-])
-def test_no_topic_can_bypass_the_relevance_filter(query):
-    class NegativeReranker:
-        def predict(self, pairs, **kwargs):
-            return np.full(len(pairs), -1.0, dtype=np.float32)
-
-    catalog = make_catalog().iloc[:1].copy()
-    catalog.loc[0, "title"] = query
-    result = recommend(catalog, query, embeddings=np.asarray([[1, 0]], dtype=np.float32),
-                       model=FakeModel(), reranker=NegativeReranker(), generate_evidence=False)
-    assert result.empty
+def test_recommender_without_reranker_orders_by_cosine():
+    catalog = make_catalog().iloc[:2].reset_index(drop=True)
+    results = run(catalog, "Research project about solar energy", np.asarray([[0.6, 0.8], [1, 0]], dtype=np.float32),
+                  reranker_spec=None, reranker=None)
+    assert results["id"].tolist() == ["W2", "W1"]
+    assert results["score"].equals(results["retrieval_score"])
 
 
 def test_recommender_rejects_short_queries_and_unknown_engines():
     catalog = make_catalog().iloc[:1].reset_index(drop=True)
     vectors = np.asarray([[1, 0]], dtype=np.float32)
     with pytest.raises(ValueError, match="cinco palabras"):
-        recommend(catalog, "solar energy", embeddings=vectors, model=FakeModel())
+        run(catalog, "solar energy", vectors)
     with pytest.raises(ValueError, match="Motor desconocido"):
-        recommend(catalog, "Research project about solar energy", engine="other", embeddings=vectors, model=FakeModel())
+        run(catalog, "Research project about solar energy", vectors, engine="other")
 
 
 def test_empty_filters_return_empty_result():
     catalog = make_catalog().iloc[:1].reset_index(drop=True)
-    vectors = np.asarray([[1, 0]], dtype=np.float32)
-    results = recommend(catalog, "Research project about solar energy", embeddings=vectors, model=FakeModel(), fields=["Medicine"])
+    results = run(catalog, "Research project about solar energy", np.asarray([[1, 0]], dtype=np.float32), fields=["Medicine"])
     assert results.empty
     assert "score" in results.columns
 
 
-def test_ranking_metrics():
+def test_precision_counts_missing_positions_as_not_pertinent():
     assert precision_at_k([2, 0, 1, 0, 0], 5) == pytest.approx(0.4)
-    assert ndcg_at_k([2, 1, 0], 3) == pytest.approx(1.0)
-    assert ndcg_at_k([0, 2], 2) < 1.0
-    # The ideal order may include relevant documents returned by another engine.
-    assert ndcg_at_k([2, 0], 2, ideal_relevances=[2, 2, 0]) < 1.0
+    assert precision_at_k([2, 1], 5) == pytest.approx(0.4)
+
+
+def test_ndcg_ideal_uses_every_judgment_for_the_query():
+    judgments = {"a": 1, "b": 2, "c": 2, "d": 0}
+    # Una lista que solo recupera un artículo parcial no alcanza la nota máxima.
+    assert ndcg_at_k(["a"], judgments, 5) == pytest.approx(1 / (3 + 3 / np.log2(3) + 1 / np.log2(4)))
+    assert ndcg_at_k(["b", "c", "a"], judgments, 5) == pytest.approx(1.0)
+    assert ndcg_at_k(["x", "y"], judgments, 5) == 0.0
+
+
+def test_reciprocal_rank_and_recall_for_known_item():
+    ranked = ["x", "y", "target", "z"]
+    assert reciprocal_rank(ranked, "target", 10) == pytest.approx(1 / 3)
+    assert reciprocal_rank(ranked, "target", 2) == 0.0
+    assert recall_at_k(ranked, "target", 10) == 1.0
+    assert recall_at_k(ranked, "target", 2) == 0.0
+
+
+def test_intra_list_diversity_known_values():
+    identical = np.asarray([[1.0, 0.0], [1.0, 0.0], [1.0, 0.0]])
+    orthogonal = np.asarray([[1.0, 0.0], [0.0, 1.0]])
+    assert intra_list_diversity(identical) == pytest.approx(0.0)
+    assert intra_list_diversity(orthogonal) == pytest.approx(1.0)
+    assert intra_list_diversity(identical[:1]) == 0.0
 
 
 def test_metrics_validate_k():
-    with pytest.raises(ValueError):
-        precision_at_k([1], 0)
-    with pytest.raises(ValueError):
-        ndcg_at_k([1], 0)
+    for metric, arguments in ((precision_at_k, ([1],)), (ndcg_at_k, (["a"], {"a": 1})), (reciprocal_rank, (["a"], "a")),
+                              (recall_at_k, (["a"], "a"))):
+        with pytest.raises(ValueError):
+            metric(*arguments, 0)
+
+
+def test_clean_abstract_removes_labels_and_trailing_notices_but_keeps_copyright_as_topic():
+    assert clean_abstract("Abstract Results improved learning. " * 3 + "© 2017 Wiley Periodicals, Inc.").startswith("Results improved")
+    assert "Wiley" not in clean_abstract("Results improved learning. " * 4 + "© 2017 Wiley Periodicals, Inc.")
+    assert clean_abstract("RESUMEN: El estudio analiza el agua.") == "El estudio analiza el agua."
+    topical = "The Law on Copyright and Related Rights is analysed in detail. " + "Further discussion follows. " * 10
+    assert "Copyright" in clean_abstract(topical)
+    assert clean_abstract("Findings hold. " * 6 + "(PsycInfo Database Record (c) 2021 APA, all rights reserved).").endswith("Findings hold.")
+
+
+def test_clean_text_repairs_utf8_read_as_latin1():
+    assert clean_text("objetivos estratÃ©gicos de la agenda") == "objetivos estratégicos de la agenda"
+
+
+def test_prepare_texts_relabels_language_from_abstract_and_excludes_shared_abstracts():
+    english = " ".join(["The study examines renewable energy policy and electricity markets in several countries."] * 10)
+    frame = pd.DataFrame([
+        {"id": "W1", "title": "Energía renovable", "abstract": english, "language": "es", "source_database": "OpenAlex"},
+        {"id": "W2", "title": "Journal scope one", "abstract": "Shared journal description text " * 20, "language": "en", "source_database": "OpenAlex"},
+        {"id": "W3", "title": "Journal scope two", "abstract": "Shared journal description text " * 20, "language": "en", "source_database": "OpenAlex"},
+    ])
+    kept, report = prepare_texts(frame)
+    assert kept["id"].tolist() == ["W1"]
+    assert kept.iloc[0]["language"] == "en"
+    assert kept.iloc[0]["language_declared"] == "es"
+    assert report["excluded"] == {"shared_abstract": 2}
 
 
 def make_scielo_record():
@@ -238,7 +275,7 @@ def make_scielo_record():
     }
 
 
-def test_scielo_normalizes_legacy_articlemeta_fields():
+def test_scielo_normalizes_articlemeta_json_fields():
     article = normalize_article(
         make_scielo_record(),
         journal_subject_by_issn={"1234-5678": "Health Sciences"},
