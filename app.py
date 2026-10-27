@@ -117,7 +117,8 @@ with st.sidebar:
             diversity_label = st.select_slider(
                 "Diversidad de resultados",
                 options=("Más afines", "Equilibrados", "Más variados"),
-                value="Equilibrados",
+                # Por defecto se muestra el sistema evaluado (C); MMR queda como opción del estudiante.
+                value="Más afines",
                 help="MMR conserva relevancia y reduce resultados demasiado parecidos.",
             )
             diversity_lambda = {

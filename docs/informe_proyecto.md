@@ -1,6 +1,7 @@
 # Ciencia a tu tesis: sistema recomendador de artículos científicos para proyectos de grado y tesis
 
 **Curso:** Sistemas Recomendadores, Universidad Icesi
+
 **Grupo 8:** Sebastian Erazo Ochoa, Ricardo Andrés Chamorro Martinez, Juan Camilo Muñoz Barco
 
 ---
@@ -72,9 +73,9 @@ El diagrama está en [`docs/arquitectura.mmd`](arquitectura.mmd) (Mermaid) y se 
 
 **2. Procesamiento y representación.** La limpieza normaliza los dos esquemas a uno común, repara problemas de codificación, quita los rótulos y avisos editoriales de los resúmenes, excluye los textos que no describen el artículo, detecta el idioma de cada resumen y elimina duplicados por identificador, DOI y título. El resultado es un catálogo de 108.252 artículos con un manifiesto que registra filtros, conteos y hashes. Cada artículo se representa con el texto `título. palabras clave. topic. resumen`, convertido en un vector por el modelo multilingüe bge-m3. La descripción del estudiante y sus palabras clave se convierten en un vector con el mismo modelo, de modo que ambos quedan en el mismo espacio y pueden compararse aunque estén en idiomas distintos.
 
-**3. Motor de recomendación.** Primero aplica los filtros del estudiante (disciplina, periodo, idioma). Luego compara el vector de la consulta con los vectores de los artículos permitidos por similitud coseno y conserva los 100 más cercanos. Un segundo modelo, bge-reranker-v2-m3, lee la consulta junto con cada uno de esos 100 artículos, les asigna un puntaje de pertinencia y los reordena; el sistema entrega los 10 primeros. El mismo módulo resuelve la exploración por artículos similares, comparando el vector de un artículo elegido con el resto del catálogo, y ofrece TF-IDF como referencia léxica para consultas en inglés.
+**3. Motor de recomendación.** Primero aplica los filtros del estudiante (disciplina, periodo, idioma). Luego compara el vector de la consulta con los vectores de los artículos permitidos por similitud coseno y conserva los 100 más cercanos. Un segundo modelo, bge-reranker-v2-m3, lee la consulta junto con cada uno de esos 100 artículos, les asigna un puntaje de pertinencia y los reordena; el sistema entrega los 10 primeros. Como opción, el estudiante puede diversificar esa lista con MMR (relevancia marginal máxima); por defecto se muestra el orden por pertinencia, que es el que se evaluó. El mismo módulo resuelve la exploración por artículos similares, comparando el vector de un artículo elegido con el resto del catálogo, y ofrece TF-IDF como referencia léxica para consultas en inglés.
 
-**4. Capa de presentación.** Una aplicación Streamlit recibe la descripción, las palabras clave y los filtros, y muestra cada resultado con autores, año, campo, fuente, resumen, enlace, puntaje y la oración del resumen más cercana a la consulta. Desde cada resultado el estudiante puede ver artículos similares y volver atrás. También puede guardar artículos durante la sesión y descargar las referencias seleccionadas en formato RIS para importarlas en un gestor bibliográfico. La interfaz advierte que la recomendación es temática, que el catálogo tiene poca literatura en español y que el sistema tiende a priorizar el idioma de la consulta. El estudiante revisa los resultados y decide cuáles le sirven.
+**4. Capa de presentación.** Una aplicación Streamlit recibe la descripción, las palabras clave y los filtros, y muestra cada resultado con autores, año, campo, fuente, resumen, enlace, puntaje y la oración del resumen más cercana a la consulta. Desde cada resultado el estudiante puede ver artículos similares y volver atrás. Un selector permite pedir resultados más afines (por defecto), equilibrados o más variados. También puede guardar artículos durante la sesión y descargar las referencias seleccionadas en formato RIS para importarlas en un gestor bibliográfico. La interfaz advierte que la recomendación es temática, que el catálogo tiene poca literatura en español y que el sistema tiende a priorizar el idioma de la consulta. El estudiante revisa los resultados y decide cuáles le sirven.
 
 ## 2.3 Prototipo funcional
 
@@ -113,6 +114,8 @@ La limpieza modificó el texto de 16.462 artículos, corrigió el idioma de 846 
 
 **Criterio de similitud.** El sistema calcula la similitud coseno exacta entre la consulta y cada artículo que cumple los filtros y conserva los 100 más cercanos. Después, [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3) lee la consulta y cada candidato juntos (hasta 512 tokens) y les asigna un puntaje de pertinencia; se entregan los 10 primeros. No hay umbral: los puntajes del reordenador no están calibrados entre consultas, y un corte fijo dejaba listas incompletas o vacías (por ejemplo, 2 de 10 resultados para una consulta sobre contaminantes en ríos andinos). El puntaje que se muestra ordena los resultados; no es una probabilidad ni una medida de calidad.
 
+**Diversificación opcional (MMR).** Si el estudiante elige resultados equilibrados (λ = 0,7) o más variados (λ = 0,5), el sistema reordena los 100 candidatos con MMR: en cada paso elige el candidato que combina un puntaje alto con poca similitud con los ya elegidos. λ es el peso de la pertinencia; con λ = 1 el orden es el del reordenador. El primer resultado no cambia, porque es el de mayor puntaje.
+
 **Artículos similares.** Coseno entre el vector del artículo elegido y los del catálogo, con los mismos filtros de la búsqueda y excluyendo el artículo de referencia y sus duplicados.
 
 **Referencia.** TF-IDF de unigramas y bigramas, sin palabras vacías del inglés y con 30.000 términos, sobre los artículos en inglés.
@@ -128,7 +131,7 @@ python scripts/build_index.py     # vectores bge-m3 (unos 70 minutos en GPU), TF
 streamlit run app.py
 ```
 
-El código está comentado y el notebook [`notebooks/01_recomendador_explicado.ipynb`](../notebooks/01_recomendador_explicado.ipynb) explica cada etapa con su resultado. El README describe cómo reproducir la evaluación. Los 43 tests automatizados (`pytest -q`) cubren la limpieza, el motor, las métricas, la exploración por artículos similares y la navegación de la aplicación.
+El código está comentado y el notebook [`notebooks/01_recomendador_explicado.ipynb`](../notebooks/01_recomendador_explicado.ipynb) explica cada etapa con su resultado. El README describe cómo reproducir la evaluación. Los 53 tests automatizados (`pytest -q`) cubren la limpieza, el motor, las métricas, la diversificación con MMR, la exploración por artículos similares, la exportación de referencias y la navegación de la aplicación.
 
 ### 2.3.4 Ejemplo de perfil de usuario
 
@@ -174,8 +177,10 @@ El ítem conocido y el topic son aproximaciones automáticas: una consulta tiene
 | **C** (elegida) | bge-m3, 1.024 tokens | bge-reranker-v2-m3, 512 tokens | 100 | 3,14 |
 | **D** | bge-m3, 1.024 tokens | bge-reranker-v2-m3, 1.024 tokens | 100 | 3,81 |
 | **E** | bge-m3 + índice léxico bilingüe (fusión RRF) | bge-reranker-v2-m3, 512 tokens | 100 | 3,58 |
+| **F** | bge-m3, 1.024 tokens | bge-reranker-v2-m3, 512 tokens + MMR λ = 0,7 | 100 | 3,09 |
+| **G** | bge-m3, 1.024 tokens | bge-reranker-v2-m3, 512 tokens + MMR λ = 0,5 | 100 | 3,33 |
 
-Tiempos medidos en una GPU RTX 3050 de 4 GB.
+F y G cambian solo el orden final de C: son las opciones "equilibrados" y "más variados" del selector de diversidad de la aplicación. Tiempos medidos en una GPU RTX 3050 de 4 GB.
 
 **Resultados automáticos (200 consultas).**
 
@@ -186,6 +191,8 @@ Tiempos medidos en una GPU RTX 3050 de 4 GB.
 | **C** | **0,900** | **0,97** | 0,063 | **0,490** | 0,390 |
 | D | 0,886 | 0,97 | 0,068 | 0,483 | 0,390 |
 | E | 0,885 | 0,95 | 0,070 | 0,480 | 0,398 |
+| F | 0,899 | 0,97 | 0,065 | 0,454 | 0,411 |
+| G | 0,899 | 0,965 | 0,067 | 0,419 | 0,427 |
 
 Prueba de aleatorización pareada de Fisher (`ranx.compare`, 100.000 permutaciones; los p-valores tienen un error de Monte Carlo de alrededor de ±0,001):
 
@@ -196,6 +203,8 @@ Prueba de aleatorización pareada de Fisher (`ranx.compare`, 100.000 permutacion
 | C frente a B | +0,170 | < 0,00001 | +0,09 | < 0,00001 |
 | D frente a C | −0,014 | ≈ 0,05 | 0,00 | 1,0 |
 | E frente a C | −0,015 | ≈ 0,13 | −0,02 | ≈ 0,12 |
+| F frente a C | −0,001 | ≈ 0,75 | 0,00 | 1,0 |
+| G frente a C | −0,001 | ≈ 0,52 | −0,005 | 1,0 |
 
 Las métricas propias (MRR, Recall, nDCG con el ideal calculado desde todos los juicios, ILD) tienen tests con valores conocidos y coinciden con `ranx` al cuarto decimal.
 
@@ -218,6 +227,7 @@ Las métricas propias (MRR, Recall, nDCG con el ideal calculado desde todos los 
 - En **B**, el recuperador bge-m3 coloca el artículo de origen dentro del top 100 en el 98 % de las consultas (ampliar a 200 no agrega ninguno), pero falla sobre todo entre idiomas (MRR de 0,579 de inglés a español y 0,674 de español a inglés). Eso justificó un reordenador multilingüe sobre 100 candidatos: **C** sube esos cruces a 0,912 y 0,835.
 - En **C**, los pares de más de 512 tokens tenían un MRR menor (0,885 frente a 0,942) y concentraban los fallos del reordenador. **D** amplió la lectura a 1.024 tokens para comprobarlo: no mejoró (−0,014, p ≈ 0,05) y fue un 21 % más lento. Los pares largos son más difíciles por sí mismos. Se descartó.
 - **E** fusiona la lista densa con un índice léxico bilingüe. No mejoró (−0,015, p ≈ 0,13) y perdió en las búsquedas entre idiomas (0,862 de inglés a español y 0,812 de español a inglés), porque el índice léxico solo encuentra palabras del mismo idioma de la consulta. Además acentuó el sesgo de idioma (sección 3.1). Se descartó.
+- **F** y **G** diversifican el orden de C con MMR. No cambian la capacidad de encontrar el artículo buscado (MRR 0,899 en ambas; p ≈ 0,75 y 0,52) y hacen las listas más variadas (ILD de 0,390 a 0,411 y 0,427), a cambio de menos coherencia temática (P@10 por topic de 0,490 a 0,454 y 0,419). Como la verificación humana se hizo sobre C y el cambio en la tarea principal es nulo, la aplicación muestra C por defecto y ofrece F y G como opciones del estudiante, sin presentarlas como mejoras de pertinencia.
 
 **Análisis de errores de tres consultas.**
 
@@ -266,7 +276,8 @@ Los artefactos de la evaluación (métricas, comparaciones, desgloses, exposici�
 - **Errores de la recuperación.** En 4 de los 6 fallos de C en el ítem conocido, el artículo de origen quedó fuera de los 100 candidatos (entre los puestos 208 y 347), así que el reordenador nunca lo vio; tres de esos cuatro son consultas en español sobre artículos en inglés.
 - **Metadatos.** Solo se usan metadatos y resúmenes. Quedan 56 avisos de derechos de autor incrustados a mitad del texto que la limpieza no recorta para no arriesgar texto útil. El topic de SciELO es la primera palabra clave de la revista, por lo que la métrica por topic solo usa orígenes de OpenAlex (176 de 200). ArticleMeta no informa de manera consistente las retractaciones.
 - **Evaluación.** La verificación humana tiene un solo calificador y 20 consultas. Las descripciones de ítem conocido las redactó el grupo, que conocía el sistema.
-- **Artículos similares.** La exploración por artículos similares no tiene una evaluación propia con métricas.
+- **Artículos similares y diversidad.** La exploración por artículos similares no tiene una evaluación propia con métricas, y las opciones de diversidad (F y G) solo tienen evaluación automática, sin verificación humana.
+- **Memoria.** Si el equipo no tiene memoria suficiente para cargar el reordenador, la aplicación muestra los resultados ordenados solo por similitud y lo advierte; en ese caso la calidad corresponde a la configuración B (MRR 0,730), no a C.
 - **Actualización.** Agregar artículos exige reconstruir el catálogo y recodificar el índice (unos 70 minutos en una GPU de 4 GB). Cada búsqueda toma unos 3 segundos en GPU.
 
 ---
@@ -297,7 +308,7 @@ Se usa la clasificación de Friedman y Nissenbaum (1996): sesgos **preexistentes
 
 ### Sesgos emergentes
 
-**E1. Sobreespecialización** *(sesgo de exposición)*. Las listas de C son más homogéneas que las de la referencia (ILD@10 de 0,390 frente a 0,451): cuanto más preciso es el sistema, más se parecen entre sí sus resultados. Con el uso, el estudiante puede leer variantes de un mismo subtema y no conocer enfoques vecinos. La exploración por artículos similares puede acentuarlo, porque cada paso se acerca más al artículo elegido.
+**E1. Sobreespecialización** *(sesgo de exposición)*. Las listas de C son más homogéneas que las de la referencia (ILD@10 de 0,390 frente a 0,451): cuanto más preciso es el sistema, más se parecen entre sí sus resultados. Con el uso, el estudiante puede leer variantes de un mismo subtema y no conocer enfoques vecinos. La exploración por artículos similares puede acentuarlo, porque cada paso se acerca más al artículo elegido. Diversificar con MMR (F y G) sube la ILD a 0,411 y 0,427, pero también aumenta la presencia del español en las consultas en español (de 4,2 a 4,6 veces su proporción en el catálogo con F).
 
 **E2. Concentración de lecturas** *(relacionado con el sesgo de popularidad)*. El sistema no usa citas ni popularidad, así que no tiene el sesgo de popularidad clásico. Pero si muchos estudiantes con temas parecidos reciben las mismas recomendaciones, esos artículos se leerán y citarán más, y en un sistema que incorporara retroalimentación se volverían populares por haber sido recomendados.
 
@@ -312,11 +323,12 @@ Se usa la clasificación de Friedman y Nissenbaum (1996): sesgos **preexistentes
 | T2. Truncamiento | Usar un recuperador con ventana de 1.024 tokens, fijada según los percentiles del texto | Modelo | Resuelto: solo el 0,63 % de los textos se recorta |
 | T3. Categorías y topics | Mapear las categorías de SciELO a los campos de OpenAlex con un clasificador sobre el texto; contrastar las métricas por topic con juicio humano | Datos y evaluación | La verificación humana se implementó; el mapeo queda propuesto |
 | T4. Afinidad confundida con calidad | Advertir en la interfaz que la recomendación es temática y mostrar la fuente y la revista de cada artículo | Presentación | Implementado |
-| E1. Sobreespecialización | Reordenar con MMR los 100 candidatos y ofrecer tres pesos de afinidad (λ=1, 0,7 y 0,5) para controlar la diversidad | Resultado | Implementado en la búsqueda semántica; comparar ILD y pertinencia humana antes de concluir su impacto |
+| E1. Sobreespecialización | Reordenar con MMR los 100 candidatos y ofrecer tres pesos de pertinencia (λ = 1, 0,7 y 0,5) para controlar la diversidad | Resultado | Implementado como opción del estudiante y medido: con λ = 0,7 la ILD sube de 0,390 a 0,411 sin cambiar el MRR; la coherencia por topic baja de 0,490 a 0,454. Sin verificación humana |
 | E2. Concentración de lecturas | Si se incorpora retroalimentación, limitar el peso de la popularidad y vigilar la cobertura del catálogo que llega a recomendarse | Resultado | Propuesta |
 
-Dentro del prototipo se resolvieron el truncamiento, la medición de la exposición por idioma y fuente, la verificación humana como contraste de las métricas automáticas y las advertencias de la interfaz. Las demás medidas quedan descritas para una versión con más datos o con retroalimentación de los usuarios.
-MMR ya está disponible como opción en la búsqueda semántica. El procedimiento reproducible para medir su efecto está implementado en `scripts/evaluate_mmr.py` y `scripts/score_mmr.py`: compara λ=1, 0,7 y 0,5 sobre los mismos 100 candidatos, mide ILD@10 en las listas mostradas y prepara una calificación humana ciega para calcular P@5 y nDCG@10. La comparación se ejecuta con los 10 perfiles bilingües (20 consultas), por lo que sus diferencias son exploratorias. **El efecto cuantitativo sigue pendiente de generar las listas, completar la hoja de juicios y ejecutar la puntuación**; hasta entonces no se afirma que MMR mejore la pertinencia.
+Dentro del prototipo se resolvieron el truncamiento, la medición de la exposición por idioma y fuente, la verificación humana como contraste de las métricas automáticas, las advertencias de la interfaz y la diversificación opcional con MMR. Las demás medidas quedan descritas para una versión con más datos o con retroalimentación de los usuarios.
+
+El efecto automático de MMR se midió con las 200 consultas de ítem conocido (configuraciones F y G de la sección 2.3.5). Su efecto sobre la pertinencia percibida no se ha medido: `scripts/evaluate_mmr.py` y `scripts/score_mmr.py` preparan y puntúan una calificación humana ciega de λ = 1, 0,7 y 0,5 con los 10 perfiles bilingües, que queda pendiente. Hasta entonces no se afirma que MMR mejore la pertinencia.
 
 **Trabajo futuro.** Además de las mitigaciones: búsqueda híbrida que no dependa del idioma (por ejemplo, traduciendo la consulta antes de la búsqueda léxica), expansión de consultas, ajuste fino de los modelos con juicios del dominio, más calificadores para medir el acuerdo entre ellos y una evaluación propia de la exploración por artículos similares.
 

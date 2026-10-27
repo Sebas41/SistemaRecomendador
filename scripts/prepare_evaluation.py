@@ -29,7 +29,7 @@ def main() -> None:
     profiles = [json.loads(line) for line in (EVALUATION_DIR / "topics.jsonl").read_text(encoding="utf-8").splitlines()]
     rankings = []
     for config in (args.reference, args.chosen):
-        retriever_spec, reranker_spec, lexical = CONFIGS[config]
+        retriever_spec, reranker_spec, lexical, diversity_lambda = CONFIGS[config]
         vectors = ensure_vectors(catalog, retriever_spec)
         lexical_index = ensure_lexical_index(catalog) if lexical else None
         retriever = load_retriever(retriever_spec)
@@ -37,7 +37,8 @@ def main() -> None:
             for language in ("es", "en"):
                 results = recommend(catalog, profile[language], top_k=TOP_RATED, vectors=vectors, retriever=retriever,
                                     retriever_spec=retriever_spec, reranker_spec=reranker_spec,
-                                    lexical_index=lexical_index, generate_evidence=False)
+                                    lexical_index=lexical_index, diversity_lambda=diversity_lambda,
+                                    generate_evidence=False)
                 rankings.extend({"profile_id": profile["profile_id"], "query_language": language, "config": config,
                                  "rank": rank, "article_id": article_id}
                                 for rank, article_id in enumerate(results["id"], start=1))
