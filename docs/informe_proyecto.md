@@ -316,7 +316,7 @@ Se usa la clasificación de Friedman y Nissenbaum (1996): sesgos **preexistentes
 | E2. Concentración de lecturas | Si se incorpora retroalimentación, limitar el peso de la popularidad y vigilar la cobertura del catálogo que llega a recomendarse | Resultado | Propuesta |
 
 Dentro del prototipo se resolvieron el truncamiento, la medición de la exposición por idioma y fuente, la verificación humana como contraste de las métricas automáticas y las advertencias de la interfaz. Las demás medidas quedan descritas para una versión con más datos o con retroalimentación de los usuarios.
-MMR ya está disponible como opción en la búsqueda semántica. Su efecto cuantitativo en diversidad (ILD) y pertinencia humana queda pendiente de una evaluación comparativa.
+MMR ya está disponible como opción en la búsqueda semántica. El procedimiento reproducible para medir su efecto está implementado en `scripts/evaluate_mmr.py` y `scripts/score_mmr.py`: compara λ=1, 0,7 y 0,5 sobre los mismos 100 candidatos, mide ILD@10 en las listas mostradas y prepara una calificación humana ciega para calcular P@5 y nDCG@10. La comparación se ejecuta con los 10 perfiles bilingües (20 consultas), por lo que sus diferencias son exploratorias. **El efecto cuantitativo sigue pendiente de generar las listas, completar la hoja de juicios y ejecutar la puntuación**; hasta entonces no se afirma que MMR mejore la pertinencia.
 
 **Trabajo futuro.** Además de las mitigaciones: búsqueda híbrida que no dependa del idioma (por ejemplo, traduciendo la consulta antes de la búsqueda léxica), expansión de consultas, ajuste fino de los modelos con juicios del dominio, más calificadores para medir el acuerdo entre ellos y una evaluación propia de la exploración por artículos similares.
 

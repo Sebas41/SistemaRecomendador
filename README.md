@@ -66,6 +66,20 @@ Escribe una descripción de al menos cinco palabras. Puedes añadir palabras cla
 
 Los conjuntos de evaluación están en `data/evaluation/`: 200 consultas de ítem conocido (`known_item.jsonl`) y 10 perfiles bilingües para la verificación humana (`topics.jsonl`).
 
+Para comparar la diversidad MMR, genera listas top 10 con λ=1, 0,7 y 0,5 sobre los mismos 100 candidatos. El script calcula ILD@10 y prepara una hoja ciega; no reconstruye los vectores, pero carga el recuperador y el reordenador y puede consumir bastante memoria:
+
+~~~bash
+python scripts/evaluate_mmr.py
+~~~
+
+Completa `artifacts/mmr/human_ratings.csv` con notas de 0 a 2 siguiendo [la guía de calificación](docs/guia_calificacion.md), sin consultar `human_ratings_key.csv`. Después calcula P@5, P@5 de grado 2, nDCG@10 y comparaciones pareadas:
+
+~~~bash
+python scripts/score_mmr.py
+~~~
+
+Los resultados quedan en `artifacts/mmr/`. La evaluación usa 10 perfiles en español e inglés (20 consultas); sus diferencias son evidencia exploratoria y deben leerse considerando el tamaño del conjunto y el número de calificadores.
+
 ~~~bash
 python scripts/evaluate_configs.py            # ejecuta las configuraciones A–E sobre las 200 consultas
 python scripts/score_known_item.py --configs A B C D E
