@@ -74,7 +74,7 @@ El diagrama está en [`docs/arquitectura.mmd`](arquitectura.mmd) (Mermaid) y se 
 
 **3. Motor de recomendación.** Primero aplica los filtros del estudiante (disciplina, periodo, idioma). Luego compara el vector de la consulta con los vectores de los artículos permitidos por similitud coseno y conserva los 100 más cercanos. Un segundo modelo, bge-reranker-v2-m3, lee la consulta junto con cada uno de esos 100 artículos, les asigna un puntaje de pertinencia y los reordena; el sistema entrega los 10 primeros. El mismo módulo resuelve la exploración por artículos similares, comparando el vector de un artículo elegido con el resto del catálogo, y ofrece TF-IDF como referencia léxica para consultas en inglés.
 
-**4. Capa de presentación.** Una aplicación Streamlit recibe la descripción, las palabras clave y los filtros, y muestra cada resultado con autores, año, campo, fuente, resumen, enlace, puntaje y la oración del resumen más cercana a la consulta. Desde cada resultado el estudiante puede ver artículos similares y volver atrás. La interfaz advierte que la recomendación es temática, que el catálogo tiene poca literatura en español y que el sistema tiende a priorizar el idioma de la consulta. El estudiante revisa los resultados y decide cuáles le sirven.
+**4. Capa de presentación.** Una aplicación Streamlit recibe la descripción, las palabras clave y los filtros, y muestra cada resultado con autores, año, campo, fuente, resumen, enlace, puntaje y la oración del resumen más cercana a la consulta. Desde cada resultado el estudiante puede ver artículos similares y volver atrás. También puede guardar artículos durante la sesión y descargar las referencias seleccionadas en formato RIS para importarlas en un gestor bibliográfico. La interfaz advierte que la recomendación es temática, que el catálogo tiene poca literatura en español y que el sistema tiende a priorizar el idioma de la consulta. El estudiante revisa los resultados y decide cuáles le sirven.
 
 ## 2.3 Prototipo funcional
 
@@ -312,10 +312,11 @@ Se usa la clasificación de Friedman y Nissenbaum (1996): sesgos **preexistentes
 | T2. Truncamiento | Usar un recuperador con ventana de 1.024 tokens, fijada según los percentiles del texto | Modelo | Resuelto: solo el 0,63 % de los textos se recorta |
 | T3. Categorías y topics | Mapear las categorías de SciELO a los campos de OpenAlex con un clasificador sobre el texto; contrastar las métricas por topic con juicio humano | Datos y evaluación | La verificación humana se implementó; el mapeo queda propuesto |
 | T4. Afinidad confundida con calidad | Advertir en la interfaz que la recomendación es temática y mostrar la fuente y la revista de cada artículo | Presentación | Implementado |
-| E1. Sobreespecialización | Reordenamiento por relevancia marginal máxima (MMR, λ ≈ 0,7) sobre los 100 candidatos, midiendo el ILD y la pertinencia humana antes de adoptarlo | Resultado | Propuesta |
+| E1. Sobreespecialización | Reordenar con MMR los 100 candidatos y ofrecer tres pesos de afinidad (λ=1, 0,7 y 0,5) para controlar la diversidad | Resultado | Implementado en la búsqueda semántica; comparar ILD y pertinencia humana antes de concluir su impacto |
 | E2. Concentración de lecturas | Si se incorpora retroalimentación, limitar el peso de la popularidad y vigilar la cobertura del catálogo que llega a recomendarse | Resultado | Propuesta |
 
 Dentro del prototipo se resolvieron el truncamiento, la medición de la exposición por idioma y fuente, la verificación humana como contraste de las métricas automáticas y las advertencias de la interfaz. Las demás medidas quedan descritas para una versión con más datos o con retroalimentación de los usuarios.
+MMR ya está disponible como opción en la búsqueda semántica. Su efecto cuantitativo en diversidad (ILD) y pertinencia humana queda pendiente de una evaluación comparativa.
 
 **Trabajo futuro.** Además de las mitigaciones: búsqueda híbrida que no dependa del idioma (por ejemplo, traduciendo la consulta antes de la búsqueda léxica), expansión de consultas, ajuste fino de los modelos con juicios del dominio, más calificadores para medir el acuerdo entre ellos y una evaluación propia de la exploración por artículos similares.
 
