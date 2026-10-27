@@ -11,6 +11,7 @@ import streamlit as st
 
 from sisreco import settings
 from sisreco.engine import build_query, load_reranker, load_retriever, load_vectors, recommend, recommend_similar
+from sisreco.references import export_ris
 from sisreco.settings import CATALOG, DATA_MANIFEST
 
 st.set_page_config(page_title="Ciencia a tu tesis", page_icon="📚", layout="wide")
@@ -67,38 +68,6 @@ def toggle_saved(article_id: str) -> None:
         saved.remove(article_id)
     else:
         saved.add(article_id)
-
-
-def export_ris(articles: pd.DataFrame) -> str:
-    """Serialize available article metadata as UTF-8-compatible RIS text."""
-    records = []
-    for _, article in articles.iterrows():
-        records.append("TY  - JOUR")
-        title = text_or_default(article.get("title"))
-        if title:
-            records.append(f"TI  - {title}")
-        authors = article.get("authors")
-        if isinstance(authors, (list, tuple, np.ndarray)):
-            records.extend(f"AU  - {str(author).replace(chr(13), ' ').replace(chr(10), ' ')}" for author in authors if str(author).strip())
-        year = article.get("year")
-        if pd.notna(year):
-            records.append(f"PY  - {int(year)}")
-        doi = text_or_default(article.get("doi"))
-        if doi:
-            doi = doi.removeprefix("https://doi.org/").removeprefix("http://doi.org/")
-            records.append(f"DO  - {doi}")
-        url = text_or_default(article.get("url")) or (f"https://doi.org/{doi}" if doi else "")
-        if url:
-            records.append(f"UR  - {url}")
-        keywords = article.get("keywords")
-        if isinstance(keywords, (list, tuple, np.ndarray)):
-            records.extend(f"KW  - {str(keyword).replace(chr(13), ' ').replace(chr(10), ' ')}" for keyword in keywords if str(keyword).strip())
-        abstract = text_or_default(article.get("abstract"))
-        if abstract:
-            records.append(f"AB  - {abstract.replace(chr(13), ' ').replace(chr(10), ' ')}")
-        records.append("ER  -")
-        records.append("")
-    return "\n".join(records)
 
 
 st.title("Ciencia a tu tesis")

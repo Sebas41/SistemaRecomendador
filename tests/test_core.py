@@ -8,7 +8,7 @@ import sisreco.openalex as openalex
 from pathlib import Path
 
 from sisreco.catalog import clean_abstract, clean_catalog, clean_text, prepare_texts
-from sisreco.engine import article_text, build_query, recommend
+from sisreco.engine import _mmr_order, article_text, build_query, recommend
 from sisreco.evaluation import intra_list_diversity, ndcg_at_k, precision_at_k, recall_at_k, reciprocal_rank
 from sisreco.settings import RerankerSpec, RetrieverSpec
 from sisreco.openalex import reconstruct_abstract, valid_work
@@ -170,6 +170,38 @@ def test_recommender_without_reranker_orders_by_cosine():
     results = run(catalog, "Research project about solar energy", np.asarray([[0.6, 0.8], [1, 0]], dtype=np.float32),
                   reranker_spec=None, reranker=None)
     assert results["id"].tolist() == ["W2", "W1"]
+    assert results["score"].equals(results["retrieval_score"])
+
+
+def test_mmr_full_relevance_weight_preserves_relevance_order():
+    order = _mmr_order(
+        np.asarray([0.8, 0.95, 0.7]),
+        np.asarray([[1, 0], [0.9, 0.1], [0, 1]], dtype=np.float32),
+        relevance_weight=1.0,
+    )
+    assert order.tolist() == [1, 0, 2]
+
+
+def test_mmr_selects_a_less_redundant_candidate():
+    order = _mmr_order(
+        np.asarray([0.95, 0.94, 0.7]),
+        np.asarray([[1, 0], [0.99, 0.1], [0, 1]], dtype=np.float32),
+        relevance_weight=0.5,
+    )
+    assert order[:2].tolist() == [0, 2]
+
+
+def test_recommender_can_skip_reranker_and_keep_dense_scores():
+    class RerankerMustNotRun:
+        def predict(self, *_args, **_kwargs):
+            raise AssertionError("Reranker should be skipped in low-memory fallback")
+
+    catalog = make_catalog().iloc[:2].reset_index(drop=True)
+    vectors = np.asarray([[1, 0], [0, 1]], dtype=np.float32)
+    results = run(catalog, "Research project about solar energy", vectors,
+                  reranker=RerankerMustNotRun(), rerank_enabled=False)
+
+    assert results["id"].tolist() == ["W1", "W2"]
     assert results["score"].equals(results["retrieval_score"])
 
 

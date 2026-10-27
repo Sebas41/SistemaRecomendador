@@ -5,6 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from streamlit.testing.v1 import AppTest
+import streamlit as st
 
 import sisreco.engine as engine
 import sisreco.settings as settings
@@ -97,4 +98,62 @@ def test_app_joins_keywords_and_passes_the_selected_engine(tmp_path, monkeypatch
         ("Solar energy forecasting for electricity research. Palabras clave: photovoltaic, forecasting", "semantico", 10),
         ("Solar energy forecasting for electricity research. Palabras clave: photovoltaic, forecasting", "tfidf", 10),
     ]
+    assert not app.exception
+
+
+def test_app_saves_and_removes_an_article_and_offers_ris_download(tmp_path, monkeypatch):
+    frame = pd.DataFrame([dict(
+        id="solar", title="Solar forecasting", abstract="Solar energy forecast research.",
+        authors=["Ana Pérez"], year=2022, language="en", field="Energy", doi="10.1234/solar",
+        url="https://example.org/solar", keywords=["solar", "forecasting"], topic="Energy",
+    )])
+    catalog_path = tmp_path / "catalog.parquet"
+    frame.to_parquet(catalog_path)
+    use_fixture_settings(tmp_path, monkeypatch, catalog_path, np.array([[1, 0]], dtype=np.float32))
+    monkeypatch.setattr(engine, "recommend", lambda catalog, *_args, **_kwargs:
+                        catalog.iloc[:1].assign(score=.8, evidence="Solar forecasting research."))
+    st.cache_resource.clear()
+
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app.text_area(key="query").set_value("Solar energy forecasting for electricity research")
+    next(button for button in app.button if button.label == "Buscar artículos").click().run()
+    app.button(key="save_solar").click().run()
+
+    assert app.session_state["saved_article_ids"] == {"solar"}
+    assert [button.label for button in app.get("download_button")] == ["Descargar referencias (.ris)"]
+    app.button(key="remove_saved_solar").click().run()
+    assert app.session_state["saved_article_ids"] == set()
+    assert not app.get("download_button")
+    assert not app.exception
+
+
+def test_app_falls_back_to_dense_results_if_reranker_hits_memory_limit(tmp_path, monkeypatch):
+    frame = pd.DataFrame([dict(
+        id="solar", title="Solar forecasting", abstract="Solar energy forecast research.",
+        authors=["Ana Pérez"], year=2022, language="en", field="Energy", doi=None,
+        url=None, keywords=[], topic="Energy",
+    )])
+    catalog_path = tmp_path / "catalog.parquet"
+    frame.to_parquet(catalog_path)
+    use_fixture_settings(tmp_path, monkeypatch, catalog_path, np.array([[1, 0]], dtype=np.float32))
+
+    def raise_memory_error(*_args, **_kwargs):
+        raise OSError("The paging file is too small to complete the operation (1455)")
+
+    calls = []
+
+    def search(catalog, *_args, **kwargs):
+        calls.append(kwargs)
+        return catalog.iloc[:1].assign(score=.8, evidence="Solar forecasting research.")
+
+    monkeypatch.setattr(engine, "load_reranker", raise_memory_error)
+    monkeypatch.setattr(engine, "recommend", search)
+    st.cache_resource.clear()
+    app = AppTest.from_file(Path(__file__).resolve().parents[1] / "app.py").run()
+    app.text_area(key="query").set_value("Solar energy forecasting for electricity research")
+    next(button for button in app.button if button.label == "Buscar artículos").click().run()
+
+    assert calls and calls[0]["rerank_enabled"] is False
+    assert app.session_state["current_view"]["reranker_fallback"] is True
+    assert any("similitud semántica" in warning.value.lower() for warning in app.warning)
     assert not app.exception
