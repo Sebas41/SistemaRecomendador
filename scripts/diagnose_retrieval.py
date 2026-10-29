@@ -55,7 +55,7 @@ def query_diagnostics(catalog, configs: list[str], profile_ids: set[str]):
     rows = []
     columns = ["id", "title", "score", "retrieval_score"]
     for name in configs:
-        retriever_spec, reranker_spec, lexical = CONFIGS[name]
+        retriever_spec, reranker_spec, lexical, diversity_lambda = CONFIGS[name]
         vectors = load_vectors(catalog, retriever_spec)
         retriever = load_retriever(retriever_spec, local_files_only=True)
         lexical_index = ensure_lexical_index(catalog) if lexical else None
@@ -67,7 +67,7 @@ def query_diagnostics(catalog, configs: list[str], profile_ids: set[str]):
                 started = perf_counter()
                 result = recommend(catalog, profile[language], top_k=TOP_K, vectors=vectors, retriever=retriever,
                                    retriever_spec=retriever_spec, reranker_spec=reranker_spec, lexical_index=lexical_index,
-                                   generate_evidence=False, diagnostics=details)
+                                   diversity_lambda=diversity_lambda, generate_evidence=False, diagnostics=details)
                 dense_rank = {identifier: rank for rank, identifier in enumerate(details["dense_ids"], start=1)}
                 records = result[columns].to_dict("records")
                 for record in records:

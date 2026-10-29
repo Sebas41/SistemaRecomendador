@@ -315,19 +315,55 @@ def _top(scores: np.ndarray, count: int) -> np.ndarray:
     return best[np.argsort(-scores[best], kind="stable")]
 
 
+def _mmr_order(relevance: np.ndarray, vectors: np.ndarray, relevance_weight: float) -> np.ndarray:
+    """Greedy MMR ordering over a small candidate set of normalized vectors."""
+    if not 0.0 <= relevance_weight <= 1.0:
+        raise ValueError("diversity_lambda debe estar entre 0 y 1.")
+    scores = np.asarray(relevance, dtype=np.float32).reshape(-1)
+    embeddings = np.asarray(vectors, dtype=np.float32)
+    if embeddings.ndim != 2 or embeddings.shape[0] != len(scores):
+        raise ValueError("Cada candidato debe tener un vector para aplicar MMR.")
+    if len(scores) == 0:
+        return np.empty(0, dtype=int)
+    if relevance_weight == 1.0:
+        return np.argsort(-scores, kind="stable")
+
+    low, high = float(scores.min()), float(scores.max())
+    normalized = np.full(scores.shape, 0.5, dtype=np.float32)
+    if high - low > 1e-12:
+        normalized = (scores - low) / (high - low)
+    similarity = np.clip(embeddings @ embeddings.T, -1.0, 1.0)
+    similarity = np.maximum(similarity, 0.0)
+
+    selected = np.zeros(len(scores), dtype=bool)
+    redundancy = np.zeros(len(scores), dtype=np.float32)
+    order = np.empty(len(scores), dtype=int)
+    for rank in range(len(scores)):
+        mmr = relevance_weight * normalized - (1.0 - relevance_weight) * redundancy
+        mmr[selected] = -np.inf
+        next_position = int(np.argmax(mmr))
+        order[rank] = next_position
+        selected[next_position] = True
+        redundancy = np.maximum(redundancy, similarity[:, next_position])
+    return order
+
+
 def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", top_k: int = TOP_K,
               vectors: np.ndarray | None = None, retriever: Any | None = None, reranker: Any | None = None,
               retriever_spec: RetrieverSpec = RETRIEVER, reranker_spec: RerankerSpec | None = RERANKER,
               lexical_index: tuple[Any, Any] | None = None,
               fields: list[str] | None = None, min_year: int | None = None, max_year: int | None = None,
               language: str = "Todos", generate_evidence: bool = True,
-              diagnostics: dict[str, Any] | None = None) -> pd.DataFrame:
-    """Devuelve los top_k artículos más afines. Los puntajes ordenan; no son probabilidades ni miden calidad.
+              diagnostics: dict[str, Any] | None = None, diversity_lambda: float = 1.0,
+              rerank_enabled: bool = True) -> pd.DataFrame:
+    """Devuelve top_k por afinidad, con MMR opcional para diversificar; score no es probabilidad ni calidad.
 
     Con lexical_index, la lista corta combina por RRF los candidatos densos y los del índice
     léxico bilingüe antes de reordenar; sin él, la lista corta sale solo de la búsqueda densa.
     diagnostics, si se entrega, registra los identificadores de cada etapa.
     """
+    if not 0.0 <= diversity_lambda <= 1.0:
+        raise ValueError("diversity_lambda debe estar entre 0 y 1.")
     if len(query.split()) < 5:
         raise ValueError("Describe el proyecto con al menos cinco palabras.")
     if top_k <= 0:
@@ -355,10 +391,19 @@ def recommend(catalog: pd.DataFrame, query: str, *, engine: str = "semantico", t
     if lexical_index is not None:
         results = _fuse_lexical(candidates, positions, results, query, lexical_index, shortlist, diagnostics)
     results["score"] = results["retrieval_score"]
-    if reranker_spec is not None:
+    if reranker_spec is not None and rerank_enabled:
         reranker = reranker or load_reranker(reranker_spec)
         results["score"] = rerank_scores(query, [article_text(row) for _, row in results.iterrows()], reranker)
         results = results.sort_values("score", ascending=False, kind="stable")
+    if diversity_lambda < 1.0 and len(results) > 1:
+        positions_by_id = pd.Series(np.arange(len(catalog)), index=catalog["id"])
+        vector_positions = positions_by_id.reindex(results["id"]).to_numpy()
+        if pd.isna(vector_positions).any():
+            raise ValueError("No se encontraron vectores para todos los candidatos MMR.")
+        candidate_vectors = np.asarray(vectors[vector_positions.astype(int)], dtype=np.float32)
+        order = _mmr_order(results["score"].to_numpy(), candidate_vectors, diversity_lambda)
+        results = results.iloc[order]
+
     # Top-k fijo: sin umbral, porque los puntajes del reordenador no están calibrados entre
     # consultas y un corte fijo deja listas vacías o incompletas.
     results = results.head(top_k).reset_index(drop=True)

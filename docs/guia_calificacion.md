@@ -1,8 +1,8 @@
 # Guía de calificación de pertinencia
 
-Esta guía acompaña al archivo `artifacts/human_ratings.csv`. Cada fila es un artículo recomendado para un perfil de proyecto de grado. La columna `relevance` se llena con 0, 1 o 2.
+Esta guía acompaña a las hojas `artifacts/human_ratings.csv` y `artifacts/mmr/human_ratings.csv`. Cada fila es un artículo recomendado para un perfil de proyecto de grado. La columna `relevance` se llena con 0, 1 o 2.
 
-La hoja es ciega: los resultados de las dos configuraciones comparadas vienen mezclados y la columna que identifica cada configuración no aparece. Un mismo artículo se califica una sola vez por perfil, aunque las dos configuraciones lo hayan recomendado.
+La hoja es ciega: los resultados de las configuraciones comparadas vienen mezclados y no muestran lambda, idioma de consulta ni posición. Un mismo artículo se califica una sola vez por perfil, aunque aparezca en varias listas.
 
 ## Qué se califica
 

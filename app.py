@@ -11,6 +11,7 @@ import streamlit as st
 
 from sisreco import settings
 from sisreco.engine import build_query, load_reranker, load_retriever, load_vectors, recommend, recommend_similar
+from sisreco.references import export_ris
 from sisreco.settings import CATALOG, DATA_MANIFEST
 
 st.set_page_config(page_title="Ciencia a tu tesis", page_icon="📚", layout="wide")
@@ -28,12 +29,14 @@ def load_catalog(version: tuple[int, int]) -> pd.DataFrame:
 
 @st.cache_resource
 def cached_retriever():
-    return load_retriever(settings.RETRIEVER, local_files_only=True)
+    # Load model weights on first use; article vectors are already precomputed.
+    return load_retriever(settings.RETRIEVER)
 
 
 @st.cache_resource
 def cached_reranker():
-    return load_reranker(settings.RERANKER, local_files_only=True)
+    # Load model weights on first use; article vectors are already precomputed.
+    return load_reranker(settings.RERANKER)
 
 
 @st.cache_resource
@@ -52,6 +55,19 @@ def navigate(action: str, article_id: str | None = None):
 
 def text_or_default(value, default="") -> str:
     return value.strip() if isinstance(value, str) and value.strip() else default
+
+
+def is_windows_pagefile_error(error: OSError) -> bool:
+    message = str(error).lower()
+    return getattr(error, "winerror", None) == 1455 or "1455" in message or "paging file is too small" in message
+
+
+def toggle_saved(article_id: str) -> None:
+    saved = st.session_state.setdefault("saved_article_ids", set())
+    if article_id in saved:
+        saved.remove(article_id)
+    else:
+        saved.add(article_id)
 
 
 st.title("Ciencia a tu tesis")
@@ -95,6 +111,21 @@ with st.sidebar:
         language = {"Todos": "Todos", "Inglés": "en", "Español": "es"}[language_label]
         engine_label = st.radio("Método de búsqueda", ["Semántico bilingüe", "TF-IDF (inglés)"], key="engine")
         engine = {"Semántico bilingüe": "semantico", "TF-IDF (inglés)": "tfidf"}[engine_label]
+        diversity_label = "Más afines"
+        diversity_lambda = 1.0
+        if engine == "semantico":
+            diversity_label = st.select_slider(
+                "Diversidad de resultados",
+                options=("Más afines", "Equilibrados", "Más variados"),
+                # Por defecto se muestra el sistema evaluado (C); MMR queda como opción del estudiante.
+                value="Más afines",
+                help="MMR conserva relevancia y reduce resultados demasiado parecidos.",
+            )
+            diversity_lambda = {
+                "Más afines": 1.0,
+                "Equilibrados": 0.7,
+                "Más variados": 0.5,
+            }[diversity_label]
         top_k = st.radio("Resultados", [10, 5], horizontal=True, key="top_k")
         submitted = st.form_submit_button("Buscar artículos", type="primary", use_container_width=True)
     st.caption("Ver similares conserva los filtros de la búsqueda inicial. Pulsa Buscar para aplicar cambios.")
@@ -126,19 +157,42 @@ if submitted:
         try:
             with st.spinner("Buscando artículos relacionados..."):
                 semantic = engine == "semantico"
+                vectors = current_vectors() if semantic else None
+                retriever = cached_retriever() if semantic else None
+                reranker = None
+                reranker_fallback = False
+                if semantic:
+                    try:
+                        reranker = cached_reranker()
+                    except OSError as model_error:
+                        if not is_windows_pagefile_error(model_error):
+                            raise
+                        # Keep useful semantic results when only the larger cross-encoder cannot fit in memory.
+                        reranker_fallback = True
                 results = recommend(
                     catalog, full_query, engine=engine, **options,
-                    vectors=current_vectors() if semantic else None,
-                    retriever=cached_retriever() if semantic else None,
-                    reranker=cached_reranker() if semantic else None,
+                    vectors=vectors,
+                    retriever=retriever,
+                    reranker=reranker,
+                    diversity_lambda=diversity_lambda,
+                    rerank_enabled=not reranker_fallback,
                 )
-            view = dict(mode="query", query=full_query, engine=engine, options=options, results=results)
+            view = dict(mode="query", query=full_query, engine=engine, options=options, results=results,
+                        diversity_label=diversity_label if semantic else None,
+                        reranker_fallback=reranker_fallback)
             st.session_state["current_view"] = view
             st.session_state["search_view"] = view
             st.session_state["view_history"] = []
         except (FileNotFoundError, ValueError, OSError) as exc:
-            st.error(f"No se pudo completar la búsqueda: {exc}")
-            st.code("python scripts/build_index.py", language="bash")
+            if isinstance(exc, OSError) and is_windows_pagefile_error(exc):
+                st.warning("Windows no pudo reservar suficiente memoria para cargar el modelo de búsqueda; esta consulta no se completó.")
+                st.info("Abre Inicio y ejecuta sysdm.cpl → Opciones avanzadas → Rendimiento (Configuración) → Opciones avanzadas → Memoria virtual (Cambiar). Activa «Administrar automáticamente el tamaño del archivo de paginación» y reinicia Windows. También puedes cerrar programas que consuman memoria o usar TF-IDF con consultas en inglés.")
+            else:
+                st.error(f"No se pudo completar la búsqueda: {exc}")
+            if isinstance(exc, FileNotFoundError) and "Faltan los vectores" in str(exc):
+                st.code("python scripts/build_index.py", language="bash")
+            elif isinstance(exc, OSError) and "huggingface.co" in str(exc):
+                st.info("No se pudieron descargar los modelos. Verifica la conexion a internet y vuelve a buscar; no necesitas reconstruir el indice.")
 
 navigation = st.session_state.pop("navigation", None)
 if navigation and "current_view" in st.session_state:
@@ -184,11 +238,18 @@ else:
     options = view["options"]
     filter_fields = ", ".join(options["fields"]) if options["fields"] else "Todas las disciplinas"
     st.caption(f"{filter_fields} · {options['min_year']}–{options['max_year']} · idioma: {options['language']}")
+    if view.get("diversity_label"):
+        st.caption(f"Orden: {view['diversity_label']}.")
+    if view.get("reranker_fallback"):
+        st.warning("La memoria disponible no alcanzó para cargar el segundo modelo. Se muestran resultados ordenados por similitud semántica; al ampliar la memoria virtual de Windows podrás usar el reordenamiento completo.")
     if results.empty:
         message = "No hay otros artículos disponibles con estos filtros." if is_similar else "No se encontraron coincidencias suficientes. Prueba una descripción más precisa o amplía los filtros."
         st.info(message)
     else:
-        st.caption(f"{len(results)} resultados. La puntuación ordena afinidad; no es una probabilidad ni una valoración de calidad científica.")
+        if view.get("diversity_label") and view["diversity_label"] != "Más afines":
+            st.caption(f"{len(results)} resultados. La puntuación refleja afinidad; MMR también equilibra la variedad de temas. No es una probabilidad ni una valoración de calidad científica.")
+        else:
+            st.caption(f"{len(results)} resultados. La puntuación ordena afinidad; no es una probabilidad ni una valoración de calidad científica.")
         for rank, (_, article) in enumerate(results.iterrows(), start=1):
             authors = article.get("authors")
             authors = list(authors) if isinstance(authors, (list, tuple, np.ndarray)) else []
@@ -201,6 +262,7 @@ else:
                 source_label += f" ({collection})"
             score_label = (
                 "Similitud con el artículo" if is_similar else
+                "Similitud semántica" if view.get("reranker_fallback") else
                 "Relevancia del modelo" if view["engine"] == "semantico" else
                 "Similitud TF-IDF"
             )
@@ -216,9 +278,32 @@ else:
                     st.write(article["abstract"])
                     if text_or_default(article.get("evidence")):
                         st.info(f"Fragmento orientativo: “{article['evidence']}”")
-                actions = st.columns(2)
+                actions = st.columns(3)
                 url = text_or_default(article.get("url"))
                 if url:
                     actions[0].link_button("Abrir artículo", url)
-                actions[1].button("Ver artículos similares", key=f"similar_{article['id']}",
+                article_id = str(article["id"])
+                saved_ids = st.session_state.setdefault("saved_article_ids", set())
+                save_label = "Quitar de guardados" if article_id in saved_ids else "Guardar artículo"
+                actions[1].button(save_label, key=f"save_{article_id}", on_click=toggle_saved, args=(article_id,))
+                actions[2].button("Ver artículos similares", key=f"similar_{article_id}",
                                   on_click=navigate, args=("similar", article["id"]))
+
+saved_ids = st.session_state.setdefault("saved_article_ids", set())
+saved_articles = catalog.loc[catalog["id"].astype(str).isin(saved_ids)]
+with st.expander(f"Artículos guardados ({len(saved_articles)})", expanded=bool(saved_ids)):
+    if saved_articles.empty:
+        st.caption("Guarda artículos desde los resultados para reunir y exportar sus referencias.")
+    else:
+        for _, article in saved_articles.iterrows():
+            saved_columns = st.columns([5, 1])
+            saved_columns[0].markdown(f"**{article['title']}** · {article['year']}")
+            saved_columns[1].button("Quitar", key=f"remove_saved_{article['id']}",
+                                     on_click=toggle_saved, args=(str(article["id"]),))
+        st.download_button(
+            "Descargar referencias (.ris)",
+            data=export_ris(saved_articles),
+            file_name="referencias_ciencia_a_tu_tesis.ris",
+            mime="application/x-research-info-systems",
+            use_container_width=True,
+        )

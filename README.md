@@ -8,11 +8,11 @@ Proyecto del curso Sistemas Recomendadores, Universidad Icesi. Grupo 8: Sebastia
 
 1. **Catálogo.** 108.252 artículos publicados entre 2016 y 2025: una muestra estratificada de los 26 campos de [OpenAlex](https://openalex.org/) y una muestra de las 19 colecciones de [SciELO ArticleMeta](https://github.com/scieloorg/articles_meta/blob/master/docs/source/index.rst). La preparación limpia los resúmenes, asigna el idioma detectado en el resumen y deduplica por identificador, DOI y título.
 2. **Representación.** Cada artículo se representa con el texto `título. palabras clave. topic. resumen`, codificado con [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3) hasta 1.024 tokens. La descripción del estudiante y sus palabras clave se codifican con el mismo modelo.
-3. **Recomendación.** Se aplican los filtros elegidos (campo, años, idioma), se recuperan los 100 artículos más cercanos por similitud coseno y [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3) los reordena leyendo la consulta y cada artículo juntos. Se muestran los 10 primeros, sin umbral.
+3. **Recomendación.** Se aplican los filtros elegidos (campo, años, idioma), se recuperan los 100 artículos más cercanos por similitud coseno y [`BAAI/bge-reranker-v2-m3`](https://huggingface.co/BAAI/bge-reranker-v2-m3) los reordena leyendo la consulta y cada artículo juntos. Se muestran los 5 o 10 primeros, sin umbral. En el modo semántico, MMR permite elegir entre resultados más afines (por defecto, el sistema evaluado), equilibrados o más variados; reordena solo los 100 candidatos y mantiene visible la puntuacion de afinidad.
 4. **Artículos similares.** Desde un resultado, el sistema compara su vector con el resto del catálogo y conserva los filtros de la búsqueda.
 5. **Referencia léxica.** TF-IDF de unigramas y bigramas sobre los artículos en inglés, disponible en la interfaz para comparar.
 
-La configuración final se eligió comparando cinco alternativas con 200 consultas de ítem conocido y una verificación humana ciega. Los resultados están en el informe.
+La configuración final se eligió comparando siete alternativas con 200 consultas de ítem conocido y una verificación humana ciega. Los resultados están en el informe.
 
 ## Instalación
 
@@ -60,15 +60,29 @@ python scripts/download_data.py --sources scielo --scielo-pages-per-collection 5
 streamlit run app.py
 ~~~
 
-Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por disciplina, periodo e idioma y elegir entre la búsqueda semántica y la referencia TF-IDF (solo inglés). Cada resultado muestra autores, año, campo, fuente, resumen, enlace, un fragmento del resumen cercano a la consulta y su puntaje. El puntaje ordena los resultados; no es una probabilidad ni una valoración de calidad. **Ver artículos similares** toma un resultado como referencia; puedes volver a la lista anterior o a la búsqueda inicial. La navegación se guarda solo durante la sesión.
+Escribe una descripción de al menos cinco palabras. Puedes añadir palabras clave, filtrar por disciplina, periodo e idioma y elegir entre la búsqueda semántica y la referencia TF-IDF (solo inglés). Cada resultado muestra autores, año, campo, fuente, resumen, enlace, un fragmento del resumen cercano a la consulta y su puntaje. El puntaje mide afinidad; con MMR, el orden puede favorecer la diversidad; no es una probabilidad ni una valoración de calidad. **Ver artículos similares** toma un resultado como referencia; puedes volver a la lista anterior o a la búsqueda inicial. La navegación se guarda solo durante la sesión. El selector de diversidad usa MMR: λ = 1,0 (más afines, por defecto) ordena solo por pertinencia, 0,7 equilibra pertinencia y variedad y 0,5 da más peso a la diversidad. Las opciones 0,7 y 0,5 corresponden a las configuraciones F y G de la evaluación. También puedes guardar artículos durante la sesión y descargar sus referencias como archivo RIS para importarlas en un gestor bibliográfico. Si Windows no dispone de memoria virtual suficiente para el modelo de reordenamiento, la app puede conservar resultados por similitud semántica y mostrará un aviso.
 
 ## Reproducir la evaluación
 
 Los conjuntos de evaluación están en `data/evaluation/`: 200 consultas de ítem conocido (`known_item.jsonl`) y 10 perfiles bilingües para la verificación humana (`topics.jsonl`).
 
+Para comparar la diversidad MMR, genera listas top 10 con λ=1, 0,7 y 0,5 sobre los mismos 100 candidatos. El script calcula ILD@10 y prepara una hoja ciega; no reconstruye los vectores, pero carga el recuperador y el reordenador y puede consumir bastante memoria:
+
 ~~~bash
-python scripts/evaluate_configs.py            # ejecuta las configuraciones A–E sobre las 200 consultas
-python scripts/score_known_item.py --configs A B C D E
+python scripts/evaluate_mmr.py
+~~~
+
+Completa `artifacts/mmr/human_ratings.csv` con notas de 0 a 2 siguiendo [la guía de calificación](docs/guia_calificacion.md), sin consultar `human_ratings_key.csv`. Después calcula P@5, P@5 de grado 2, nDCG@10 y comparaciones pareadas:
+
+~~~bash
+python scripts/score_mmr.py
+~~~
+
+Los resultados quedan en `artifacts/mmr/`. La evaluación usa 10 perfiles en español e inglés (20 consultas); sus diferencias son evidencia exploratoria y deben leerse considerando el tamaño del conjunto y el número de calificadores.
+
+~~~bash
+python scripts/evaluate_configs.py            # ejecuta las configuraciones A–G sobre las 200 consultas
+python scripts/score_known_item.py --configs A B C D E F G
 python scripts/prepare_evaluation.py --chosen C   # hoja ciega para calificar
 python scripts/score_evaluation.py --ratings artifacts/human_ratings_<iniciales>.csv
 python scripts/analyze_bias.py
